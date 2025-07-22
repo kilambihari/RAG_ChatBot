@@ -1,15 +1,13 @@
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceHubEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import streamlit as st
-
 
 class RetrievalAgent:
     def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-        self.embeddings = HuggingFaceHubEmbeddings(
-            repo_id=model_name,
-            huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"]
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name=model_name,
+            encode_kwargs={"device": "cpu"}  # Ensure it works on CPU
         )
         self.vector_store = None
 
@@ -18,12 +16,12 @@ class RetrievalAgent:
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         split_docs = splitter.split_documents(docs)
 
-        # ✅ Manually extract text content
+        # ✅ Extract plain text and metadata
         texts_only = [doc.page_content for doc in split_docs]
         metadatas = [doc.metadata for doc in split_docs]
 
-    # ✅ Use from_texts instead of from_documents
-    self.vector_store = FAISS.from_texts(texts_only, self.embeddings, metadatas=metadatas)
+        # ✅ Use from_texts instead of from_documents
+        self.vector_store = FAISS.from_texts(texts_only, self.embeddings, metadatas=metadatas)
 
     def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
@@ -45,3 +43,4 @@ class RetrievalAgent:
 
         else:
             return {"type": "error", "data": f"❌ Unknown message type: {message_type}"}
+
