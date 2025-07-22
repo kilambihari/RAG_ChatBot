@@ -2,6 +2,8 @@
 import os
 import streamlit as st
 from agents.ingestion_agent import IngestionAgent
+from agents.retrieval_agent import RetrievalAgent
+
 from utils.mcp import create_message
 
 # --- Streamlit Setup ---
