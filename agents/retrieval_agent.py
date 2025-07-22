@@ -5,29 +5,24 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 class RetrievalAgent:
     def __init__(self, model_name="all-MiniLM-L6-v2"):
-        # ✅ No SentenceTransformer (avoids .to(device))
-        self.embeddings = HuggingFaceEmbeddings(model_name=model_name)
+        # ✅ HuggingFaceEmbeddings with CPU device
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name=model_name,
+            model_kwargs={"device": "cpu"}
+        )
         self.vector_store = None
 
     def store(self, texts: list[str]):
-        if not texts:
-            raise ValueError("❌ No texts provided for storage.")
-
-        split_docs = self.text_splitter.create_documents(texts)
-        if not split_docs:
-            raise ValueError("❌ Text splitter returned no documents.")
-
-        embeddings = self.embeddings.embed_documents([doc.page_content for doc in split_docs])
-        if not embeddings:
-            raise ValueError("❌ Embedding generation failed. Check model or input format.")
-
+        docs = [Document(page_content=txt) for txt in texts]
+        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+        split_docs = splitter.split_documents(docs)
         self.vector_store = FAISS.from_documents(split_docs, self.embeddings)
-
 
     def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
             return []
         return self.vector_store.similarity_search(query, k=k)
+
     def handle_message(self, message: dict) -> dict:
         message_type = message.get("type")
 
