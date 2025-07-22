@@ -39,7 +39,7 @@ if uploaded_file:
     if not api_key:
         st.error("❌ Gemini API key not found. Set GEMINI_API_KEY in environment or Streamlit secrets.")
     else:
-        retrieval_agent = RetrievalAgent(api_key=api_key)
+        retrieval_agent = RetrievalAgent()
 
         # --- Store Chunks ---
         store_message = create_message("App", "RetrievalAgent", "store", "456", {"chunks": chunks})
