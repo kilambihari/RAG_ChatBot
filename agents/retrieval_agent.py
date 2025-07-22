@@ -5,10 +5,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 class RetrievalAgent:
     def __init__(self, model_name="all-MiniLM-L6-v2"):
-        # ✅ HuggingFaceEmbeddings with CPU device
         self.embeddings = HuggingFaceEmbeddings(
             model_name=model_name,
-            model_kwargs={"device": "cpu"}
+            encode_kwargs={"device": "cpu"}  # ✅ use encode_kwargs not model_kwargs
         )
         self.vector_store = None
 
@@ -38,5 +37,4 @@ class RetrievalAgent:
 
         else:
             return {"type": "error", "data": f"❌ Unknown message type: {message_type}"}
-
 
