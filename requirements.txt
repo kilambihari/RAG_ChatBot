@@ -1,5 +1,5 @@
 streamlit
-google-generativeaiembeddings
+google-generativeai
 faiss-cpu
 PyMuPDF
 python-docx
