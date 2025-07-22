@@ -24,4 +24,20 @@ class RetrievalAgent:
         if not self.vector_store:
             return []
         return self.vector_store.similarity_search(query, k=k)
+    def handle_message(self, message: dict) -> dict:
+        message_type = message.get("type")
+
+        if message_type == "store":
+            texts = message.get("data", [])
+            self.store(texts)
+            return {"type": "store_result", "data": "✅ Stored chunks successfully."}
+
+        elif message_type == "retrieve":
+            query = message.get("data", "")
+            results = self.retrieve(query)
+            return {"type": "retrieve_result", "data": results}
+
+        else:
+            return {"type": "error", "data": f"❌ Unknown message type: {message_type}"}
+
 
