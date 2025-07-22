@@ -1,27 +1,22 @@
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceHubEmbeddings
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit as st
 
+
 class RetrievalAgent:
-    def __init__(self):
-        # Uses hosted Hugging Face inference endpoint (safe for Streamlit Cloud)
-        self.embeddings = HuggingFaceInferenceAPIEmbeddings(
-            api_key=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+        self.embeddings = HuggingFaceHubEmbeddings(
+            repo_id=model_name,
+            huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"]
         )
         self.vector_store = None
 
     def store(self, texts: list[str]):
-        # Convert to LangChain Documents
         docs = [Document(page_content=txt) for txt in texts]
-
-        # Split into smaller chunks
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         split_docs = splitter.split_documents(docs)
-
-        # Embed and store in FAISS
         self.vector_store = FAISS.from_documents(split_docs, self.embeddings)
 
     def retrieve(self, query: str, k: int = 3):
@@ -44,4 +39,3 @@ class RetrievalAgent:
 
         else:
             return {"type": "error", "data": f"❌ Unknown message type: {message_type}"}
-
