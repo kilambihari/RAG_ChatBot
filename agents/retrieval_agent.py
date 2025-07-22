@@ -17,7 +17,13 @@ class RetrievalAgent:
         docs = [Document(page_content=txt) for txt in texts]
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         split_docs = splitter.split_documents(docs)
-        self.vector_store = FAISS.from_documents(split_docs, self.embeddings)
+
+        # ✅ Manually extract text content
+        texts_only = [doc.page_content for doc in split_docs]
+        metadatas = [doc.metadata for doc in split_docs]
+
+    # ✅ Use from_texts instead of from_documents
+    self.vector_store = FAISS.from_texts(texts_only, self.embeddings, metadatas=metadatas)
 
     def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
