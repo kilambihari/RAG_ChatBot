@@ -57,8 +57,13 @@ if uploaded_file:
             matches = query_response["payload"].get("matches", [])
 
             st.subheader("🔍 Retrieved Chunks")
-            for i, match in enumerate(matches):
-                st.markdown(f"**Match {i+1}:** {match}")
+            if matches:
+                for i, match in enumerate(matches):
+                    text = match.get("text", match)  # fallback if not dict
+                    st.markdown(f"**Match {i+1}:** {text}")
+            else:
+                st.warning("No relevant chunks found for this question.")
+
 
 
 
