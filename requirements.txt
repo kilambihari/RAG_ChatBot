@@ -1,10 +1,10 @@
 streamlit
-langchain=0.1.0
-langchain-community=0.0.6
+langchain>=0.1.13
+langchain-community>=0.0.24
 google-generativeai
 faiss-cpu
 PyMuPDF
 python-docx
 python-pptx
 pandas
-sentence_transformers
+sentence-transformers
