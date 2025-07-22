@@ -34,3 +34,16 @@ if uploaded_file:
     for i, chunk in enumerate(chunks[:5]):  # show only first 5 chunks
         st.markdown(f"**Chunk {i+1}:** {chunk}")
 
+from agents.retrieval_agent import RetrievalAgent
+from utils.mcp import create_message  # already imported above
+
+# --- Initialize Retrieval Agent ---
+retrieval_agent = RetrievalAgent()
+
+# --- Store Chunks in Retrieval Agent ---
+store_message = create_message("App", "RetrievalAgent", "store", "456", {"chunks": chunks})
+store_response = retrieval_agent.handle_message(store_message)
+
+st.success("Chunks stored in retrieval index.")
+
+
