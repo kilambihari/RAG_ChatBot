@@ -46,4 +46,18 @@ store_response = retrieval_agent.handle_message(store_message)
 
 st.success("Chunks stored in retrieval index.")
 
+# --- Ask a Question ---
+st.subheader("💬 Ask a Question from Document")
+query = st.text_input("Enter your question:")
+
+if query:
+    query_message = create_message("App", "RetrievalAgent", "retrieve", "789", {"query": query})
+    query_response = retrieval_agent.handle_message(query_message)
+    matches = query_response["payload"].get("matches", [])
+
+    st.subheader(" Retrieved Chunks")
+    for i, match in enumerate(matches):
+        st.markdown(f"**Match {i+1}:** {match}")
+
+
 
