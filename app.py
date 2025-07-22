@@ -40,7 +40,9 @@ from agents.retrieval_agent import RetrievalAgent
 from utils.mcp import create_message  # already imported above
 
 # --- Initialize Retrieval Agent ---
-retrieval_agent = RetrievalAgent()
+api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+retrieval_agent = RetrievalAgent(api_key=api_key)
+
 
 # --- Store Chunks in Retrieval Agent ---
 store_message = create_message("App", "RetrievalAgent", "store", "456", {"chunks": chunks})
