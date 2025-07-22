@@ -1,19 +1,12 @@
-from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import os
 
 class RetrievalAgent:
     def __init__(self, model_name="all-MiniLM-L6-v2"):
-        # ✅ Safe initialization on Streamlit Cloud (CPU only, no .to())
-        self.embed_model = SentenceTransformer(model_name)
-
-        # Optional: wrap into LangChain-compatible embeddings
+        # ✅ No SentenceTransformer (avoids .to(device))
         self.embeddings = HuggingFaceEmbeddings(model_name=model_name)
-
-        # Init FAISS vector store placeholder
         self.vector_store = None
 
     def store(self, texts: list[str]):
