@@ -1,24 +1,34 @@
-
-
 from sentence_transformers import SentenceTransformer
-from langchain.vectorstores import FAISS
-import torch
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.docstore.document import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import os
 
 class RetrievalAgent:
     def __init__(self, model_name="all-MiniLM-L6-v2"):
-        device = "cpu"  # Force CPU
+        # ✅ Safe initialization on Streamlit Cloud (CPU only, no .to())
         self.embed_model = SentenceTransformer(model_name)
-        self.embed_model.to(torch.device(device))
+
+        # Optional: wrap into LangChain-compatible embeddings
+        self.embeddings = HuggingFaceEmbeddings(model_name=model_name)
+
+        # Init FAISS vector store placeholder
         self.vector_store = None
 
-    def build_index(self, chunks):
-        docs = [Document(page_content=c) for c in chunks]
-        self.vector_store = FAISS.from_documents(docs, self.embed_model)
+    def store(self, texts: list[str]):
+        # Convert texts to LangChain Documents
+        docs = [Document(page_content=txt) for txt in texts]
 
-    def retrieve(self, query, top_k=5):
+        # Split texts into chunks
+        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+        split_docs = splitter.split_documents(docs)
+
+        # Create FAISS vector store
+        self.vector_store = FAISS.from_documents(split_docs, self.embeddings)
+
+    def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
-            return ["Index not built yet."]
-        results = self.vector_store.similarity_search(query, k=top_k)
-        return [doc.page_content for doc in results]
+            return []
+        return self.vector_store.similarity_search(query, k=k)
 
