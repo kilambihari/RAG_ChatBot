@@ -1,0 +1,7 @@
+streamlit
+google-generativeai
+faiss-cpu
+PyMuPDF
+python-docx
+python-pptx
+pandas
