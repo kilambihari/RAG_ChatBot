@@ -1,9 +1,10 @@
 streamlit
+langchain
+langchain-community
 google-generativeai
 faiss-cpu
 PyMuPDF
 python-docx
 python-pptx
 pandas
-sentence_transformers
-langchain
+
