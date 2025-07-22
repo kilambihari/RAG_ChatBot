@@ -36,8 +36,7 @@ if uploaded_file:
     for i, chunk in enumerate(chunks[:5]):  # show only first 5 chunks
         st.markdown(f"**Chunk {i+1}:** {chunk}")
 
-from agents.retrieval_agent import RetrievalAgent
-from utils.mcp import create_message  # already imported above
+
 
 # --- Initialize Retrieval Agent ---
 api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
