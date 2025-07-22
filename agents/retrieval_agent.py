@@ -10,15 +10,19 @@ class RetrievalAgent:
         self.vector_store = None
 
     def store(self, texts: list[str]):
-        # Convert texts to LangChain Documents
-        docs = [Document(page_content=txt) for txt in texts]
+        if not texts:
+            raise ValueError("❌ No texts provided for storage.")
 
-        # Split texts into chunks
-        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-        split_docs = splitter.split_documents(docs)
+        split_docs = self.text_splitter.create_documents(texts)
+        if not split_docs:
+            raise ValueError("❌ Text splitter returned no documents.")
 
-        # Create FAISS vector store
+        embeddings = self.embeddings.embed_documents([doc.page_content for doc in split_docs])
+        if not embeddings:
+            raise ValueError("❌ Embedding generation failed. Check model or input format.")
+
         self.vector_store = FAISS.from_documents(split_docs, self.embeddings)
+
 
     def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
