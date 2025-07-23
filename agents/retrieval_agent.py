@@ -1,48 +1,57 @@
-from langchain.vectorstores import FAISS
+# agents/retrieval_agent.py
+
+from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.documents import Document
-from utils.mcp import create_message
+from langchain.docstore.document import Document
+from typing import List, Dict, Any
+import os
+
 
 class RetrievalAgent:
     def __init__(self):
         self.vectorstore = None
 
-    def _create_vectorstore(self, chunks: list[Document]):
+    def handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handles a message from another agent using MCP-style message structure.
+        Expects a message with type 'document_chunks' and payload containing 'chunks'.
+        """
+        if message.get("type") != "document_chunks":
+            return {
+                "type": "error",
+                "from": "RetrievalAgent",
+                "to": message.get("from", "Unknown"),
+                "payload": {"error": "Unsupported message type"}
+            }
+
+        chunks = message["payload"].get("chunks", [])
+        self._create_vectorstore(chunks)
+
+        return {
+            "type": "vectorstore_ready",
+            "from": "RetrievalAgent",
+            "to": message["from"],
+            "payload": {"status": "Vectorstore created from chunks"}
+        }
+
+    def _create_vectorstore(self, chunks: List[str]):
+        """
+        Creates a FAISS vectorstore using HuggingFace sentence-transformer embeddings.
+        Forces CPU usage for compatibility on limited environments.
+        """
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"}
+            model_kwargs={"device": "cpu"}  # 👈 Explicitly force CPU to avoid NotImplementedError
         )
-        self.vectorstore = FAISS.from_documents(chunks, embeddings)
 
-    def _retrieve_relevant_chunks(self, query: str) -> list[Document]:
+        self.vectorstore = FAISS.from_texts(chunks, embedding=embeddings)
+
+    def query(self, user_query: str) -> List[Document]:
+        """
+        Queries the FAISS vectorstore for similar documents.
+        """
         if not self.vectorstore:
-            return []
-        return self.vectorstore.similarity_search(query, k=4)
+            raise ValueError("Vectorstore not initialized")
 
-    def handle_message(self, message):
-        sender, receiver, msg_type, trace_id, payload = message.values()
-
-        if msg_type == "DOCUMENT_CHUNKS":
-            chunks = payload["chunks"]
-            self._create_vectorstore(chunks)
-            return create_message(
-                sender="RetrievalAgent",
-                receiver="UI",
-                msg_type="VECTOR_STORE_OK",
-                trace_id=trace_id,
-                payload={"status": "stored"}
-            )
-
-        elif msg_type == "QUERY":
-            query = payload["query"]
-            relevant_chunks = self._retrieve_relevant_chunks(query)
-            context = [doc.page_content for doc in relevant_chunks]
-
-            return create_message(
-                sender="RetrievalAgent",
-                receiver="LLMResponseAgent",
-                msg_type="RETRIEVAL_RESULT",
-                trace_id=trace_id,
-                payload={"retrieved_context": context, "query": query}
-            )
-
+        results = self.vectorstore.similarity_search(user_query, k=5)
+        return results
