@@ -1,51 +1,26 @@
-# agents/llm_response_agent.py
-
+from utils.mcp import create_message, parse_message
 import google.generativeai as genai
-from utils.mcp import parse_message, create_message
-import streamlit as st
 
 class LLMResponseAgent:
-    def __init__(self, name="LLMResponseAgent"):
+    def __init__(self, name="LLMResponseAgent", model_name="models/gemini-pro"):
         self.name = name
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        self.model = genai.GenerativeModel("gemini-pro")
+        self.model = genai.GenerativeModel(model_name)
 
     def handle_message(self, message):
         sender, receiver, msg_type, trace_id, payload = parse_message(message)
 
-        if msg_type == "GENERATE":
-            query = payload["query"]
-            context = payload.get("context", "")
+        query = payload["query"]
+        context = payload["context"]
 
-            prompt = f"""You are a helpful assistant. Use the provided context to answer the user's query.
-Context:
-{context}
+        prompt = (
+            "Use the following context to answer the user's question.\n\n"
+            f"Context:\n{context}\n\n"
+            f"Question: {query}\n\nAnswer:"
+        )
 
-Query:
-{query}
+        response = self.model.generate_content(prompt)
+        answer = response.text
 
-Answer:"""
-
-            try:
-                response = self.model.generate_content(prompt)
-                answer = response.text.strip()
-            except Exception as e:
-                answer = f"❌ Error: {str(e)}"
-
-            return create_message(
-                self.name,
-                sender,
-                "GENERATED",
-                trace_id,
-                {"response": answer}
-            )
-
-        else:
-            return create_message(
-                self.name,
-                sender,
-                "ERROR",
-                trace_id,
-                {"error": f"Unsupported message type: {msg_type}"}
-            )
+        response_payload = {"answer": answer}
+        return create_message(self.name, sender, "LLM_RESPONSE", trace_id, response_payload)
 
