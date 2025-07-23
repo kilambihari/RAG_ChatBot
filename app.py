@@ -1,70 +1,83 @@
+# app.py
+
 import os
 import streamlit as st
-import uuid
-
 from agents.ingestion_agent import IngestionAgent
 from agents.retrieval_agent import RetrievalAgent
 from agents.llm_response_agent import LLMResponseAgent
 from utils.file_handler import save_file
-from utils.mcp import create_message, parse_message
 
+# --- Page Config ---
 st.set_page_config(page_title="📄 RAG Chatbot", layout="centered")
+
+# --- Instantiate Agents ---
+ingestion_agent = IngestionAgent()
+retrieval_agent = RetrievalAgent()
+llm_agent = LLMResponseAgent()
+
+# --- Upload UI ---
 st.title("📄 Upload a Document")
+st.markdown("Upload a document")
 
 uploaded_file = st.file_uploader(
     "Upload a document",
-    type=["pdf", "docx", "pptx", "csv", "txt", "md"],
-    help="Limit 200MB per file • PDF, DOCX, PPTX, CSV, TXT, MD"
+    type=["pdf", "docx", "pptx", "csv", "txt", "md"]
 )
 
 if uploaded_file:
-    save_path = save_file(uploaded_file)
-    st.success(f"✅ File saved at: {save_path}")
+    file_path = save_file(uploaded_file)
+    st.success(f"✅ File saved at: {file_path}")
 
-    trace_id = str(uuid.uuid4())
+    # IngestionAgent handles the file
+    message = {
+        "type": "file_uploaded",
+        "from": "app",
+        "to": "IngestionAgent",
+        "payload": {"file_path": file_path}
+    }
+    ingestion_response = ingestion_agent.handle_message(message)
 
-    ingestion_agent = IngestionAgent()
-    retrieval_agent = RetrievalAgent()
-    llm_agent = LLMResponseAgent()
+    # Display Chunks
+    if ingestion_response["type"] == "document_chunks":
+        st.subheader("📄 Document Chunks")
+        for i, chunk in enumerate(ingestion_response["payload"]["chunks"]):
+            st.markdown(f"**Chunk {i+1}:** {chunk}")
 
-    # --- MCP: Step 1 – Ingest document
-    ingest_msg = create_message(
-        sender="UI",
-        receiver="IngestionAgent",
-        msg_type="DOCUMENT_UPLOAD",
-        trace_id=trace_id,
-        payload={"file_path": save_path}
-    )
+        # RetrievalAgent stores the chunks in vectorstore
+        retrieval_response = retrieval_agent.handle_message(ingestion_response)
 
-    ingestion_response = ingestion_agent.handle_message(ingest_msg)
-    chunks = ingestion_response["payload"]["chunks"]
+        if retrieval_response["type"] == "vectorstore_ready":
+            st.success("✅ Vector store is ready!")
 
-    # Display sample chunks
-    st.subheader("📄 Document Chunks")
-    for i, chunk in enumerate(chunks[:5]):
-        st.markdown(f"**Chunk {i+1}:** {chunk.page_content[:500]}{'...' if len(chunk.page_content) > 500 else ''}")
+            # Input box for user query
+            st.subheader("💬 Ask a Question")
+            user_query = st.text_input("Enter your question")
 
-    # --- MCP: Step 2 – Store chunks in vector DB
-    store_response = retrieval_agent.handle_message(ingestion_response)
-    if store_response["payload"]["status"] == "stored":
-        st.success("✅ Document stored in vector database.")
+            if user_query:
+                query_message = {
+                    "type": "query",
+                    "from": "app",
+                    "to": "RetrievalAgent",
+                    "payload": {"query": user_query}
+                }
 
-    # --- MCP: Step 3 – Q&A
-    st.subheader("💬 Ask a Question")
-    question = st.text_input("Enter your question about the document")
+                results = retrieval_agent.query(user_query)
+                result_chunks = [doc.page_content for doc in results]
 
-    if question:
-        query_msg = create_message(
-            sender="UI",
-            receiver="RetrievalAgent",
-            msg_type="QUERY",
-            trace_id=trace_id,
-            payload={"query": question}
-        )
+                # Send to LLM agent
+                llm_message = {
+                    "type": "query_and_context",
+                    "from": "app",
+                    "to": "LLMResponseAgent",
+                    "payload": {
+                        "query": user_query,
+                        "chunks": result_chunks
+                    }
+                }
 
-        retrieval_response = retrieval_agent.handle_message(query_msg)
-        llm_response = llm_agent.handle_message(retrieval_response)
+                llm_response = llm_agent.handle_message(llm_message)
 
-        final_answer = llm_response["payload"]["answer"]
-        st.markdown("### 🧠 Answer")
-        st.markdown(final_answer)
+                if llm_response["type"] == "llm_response":
+                    st.subheader("🧠 Answer")
+                    st.markdown(llm_response["payload"]["response"])
+
