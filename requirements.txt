@@ -8,3 +8,4 @@ pandas
 sentence-transformers
 faiss-cpu
 textract
+PyPDF2
