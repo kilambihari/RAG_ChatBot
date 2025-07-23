@@ -1,11 +1,12 @@
 from utils.mcp import parse_message, create_message
 from sentence_transformers import SentenceTransformer, util
+import torch
 
 class RetrievalAgent:
     def __init__(self, name="RetrievalAgent"):
         self.name = name
         self.documents = []
-        self.embeddings = []
+        self.embeddings = None
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
     def handle_message(self, message):
@@ -14,7 +15,14 @@ class RetrievalAgent:
         if msg_type == "STORE":
             content = payload["content"]
             self.documents.append(content)
-            self.embeddings.append(self.model.encode(content, convert_to_tensor=True))
+
+            new_embedding = self.model.encode(content, convert_to_tensor=True)
+
+            if self.embeddings is None:
+                self.embeddings = new_embedding.unsqueeze(0)
+            else:
+                self.embeddings = torch.cat((self.embeddings, new_embedding.unsqueeze(0)), dim=0)
+
             return create_message(
                 self.name,
                 sender,
@@ -27,7 +35,7 @@ class RetrievalAgent:
             query = payload["query"]
             query_emb = self.model.encode(query, convert_to_tensor=True)
 
-            if not self.embeddings:
+            if self.embeddings is None or len(self.documents) == 0:
                 return create_message(
                     self.name,
                     sender,
@@ -36,6 +44,7 @@ class RetrievalAgent:
                     {"context": ""}
                 )
 
+            # ✅ Now embeddings is a stacked tensor (batch)
             scores = util.cos_sim(query_emb, self.embeddings)[0]
             best_idx = scores.argmax()
             best_chunk = self.documents[best_idx]
@@ -56,3 +65,4 @@ class RetrievalAgent:
                 trace_id,
                 {"error": f"Unsupported message type: {msg_type}"}
             )
+
