@@ -7,3 +7,5 @@ python-docx
 python-pptx
 pandas
 sentence_transformers
+langchain-google-genai
+
