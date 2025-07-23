@@ -1,39 +1,53 @@
 import os
 from sentence_transformers import SentenceTransformer
-from utils.parser import parse_file
-from utils.file_handler import chunk_text
-from utils.mcp import create_message, parse_message
+from utils.parser import parse_document
+from utils.embedding import get_gemini_embedding
+from utils.vector_store import save_embeddings
+from utils.mcp import create_message
+
 
 class IngestionAgent:
     def __init__(self):
-        self.name = "IngestionAgent"
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
-
-    def get_embeddings(self, chunks):
-        # Convert list of strings into sentence embeddings
-        return self.model.encode(chunks, show_progress_bar=True).tolist()
+        # Force use of CPU to avoid Streamlit Cloud GPU issues
+        self.model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
 
     def handle_message(self, message):
-        sender, receiver, msg_type, trace_id, payload = parse_message(message)
+        """
+        Handles the INGEST message to process and embed the document.
+        Message must include file_path in payload.
+        """
+        if message["type"] != "INGEST":
+            return create_message(
+                sender="IngestionAgent",
+                receiver=message["sender"],
+                msg_type="ERROR",
+                trace_id=message["trace_id"],
+                payload={"error": "Unsupported message type"}
+            )
 
-        file_path = payload.get("file_path")
+        file_path = message["payload"].get("file_path")
         if not file_path or not os.path.exists(file_path):
-            raise ValueError(f"Invalid or missing file: {file_path}")
+            return create_message(
+                sender="IngestionAgent",
+                receiver=message["sender"],
+                msg_type="ERROR",
+                trace_id=message["trace_id"],
+                payload={"error": f"File not found: {file_path}"}
+            )
 
-        # Parse file and chunk it
-        text = parse_file(file_path)
-        chunks = chunk_text(text)
-        embeddings = self.get_embeddings(chunks)
+        # Parse content from uploaded document
+        chunks = parse_document(file_path)
 
-        # Return structured message
+        # Get embeddings using Gemini (or fallback to local model if needed)
+        embeddings = get_gemini_embedding(chunks)
+
+        # Save embeddings to vector store (e.g., FAISS)
+        save_embeddings(embeddings, chunks)
+
         return create_message(
-            sender=self.name,
-            receiver="RetrievalAgent",
-            msg_type="INGESTION_RESULT",
-            trace_id=trace_id,
-            payload={
-                "chunks": chunks,
-                "embeddings": embeddings,
-                "file_path": file_path
-            }
+            sender="IngestionAgent",
+            receiver=message["sender"],
+            msg_type="READY",
+            trace_id=message["trace_id"],
+            payload={"status": "Ingestion complete", "chunks": len(chunks)}
         )
