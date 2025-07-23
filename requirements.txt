@@ -12,3 +12,4 @@ PyPDF2
 transformers
 torch
 scikit-learn
+langchain_google_genai
