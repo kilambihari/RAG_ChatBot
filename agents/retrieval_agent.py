@@ -1,5 +1,6 @@
 import os
 import re
+import streamlit as st
 from langchain_community.embeddings import HuggingFaceHubEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -13,9 +14,9 @@ def clean_text(text: str) -> str:
 
 class RetrievalAgent:
     def __init__(self, model_name="BAAI/bge-small-en-v1.5"):
-        token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        token = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
         if not token:
-            raise ValueError("❌ Hugging Face API token not found in environment!")
+            raise ValueError("❌ Hugging Face API token not found in Streamlit secrets!")
 
         self.embeddings = HuggingFaceHubEmbeddings(
             repo_id=model_name,
@@ -39,7 +40,7 @@ class RetrievalAgent:
         
         cleaned_query = clean_text(query)
 
-        # Optional: Add hint to short queries like "Who is Harivadan"
+        # Improve matching for short queries
         if len(cleaned_query.split()) <= 4 and "who" in cleaned_query:
             cleaned_query += " summary or description"
 
@@ -62,3 +63,4 @@ class RetrievalAgent:
 
         else:
             return {"status": "error", "payload": {"message": "Unknown action"}}
+
