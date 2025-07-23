@@ -36,3 +36,4 @@ class IngestionAgent:
             trace_id=trace_id,
             payload={"status": "success", "num_chunks": len(texts)}
         )
+
