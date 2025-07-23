@@ -1,36 +1,30 @@
-import os
+# agents/ingestion_agent.py
+
 from utils.parser import parse_file
-from utils.chunker import chunk_text
-from utils.mcp import create_message
+from utils.mcp import parse_message, create_message
 
 class IngestionAgent:
-    def __init__(self, agent_id="IngestionAgent"):
-        self.agent_id = agent_id
+    def __init__(self, name="IngestionAgent"):
+        self.name = name
 
-    def handle_message(self, message: dict) -> dict:
-        # ✅ Safely extract values from message
-        sender = message.get("from")
-        receiver = message.get("to")
-        msg_type = message.get("type")
-        trace_id = message.get("trace_id", None)
-        payload = message.get("payload", {})
+    def handle_message(self, message):
+        sender, receiver, msg_type, trace_id, payload = parse_message(message)
 
-        file_path = payload.get("file_path")
-        if not file_path or not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found at: {file_path}")
-
-        # ✅ Step 1: Parse document into raw text
-        text = parse_file(file_path)
-
-        # ✅ Step 2: Split text into chunks
-        chunks = chunk_text(text)
-
-        # ✅ Step 3: Package response via MCP format
-        response = create_message(
-            sender=self.agent_id,
-            receiver=sender,
-            msg_type="INGESTION_RESPONSE",
-            trace_id=trace_id,
-            payload={"chunks": chunks}
-        )
-        return response
+        if msg_type == "INGEST":
+            file_path = payload["file_path"]
+            content = parse_file(file_path)
+            return create_message(
+                self.name,
+                sender,
+                "INGESTED",
+                trace_id,
+                {"content": content}
+            )
+        else:
+            return create_message(
+                self.name,
+                sender,
+                "ERROR",
+                trace_id,
+                {"error": f"Unsupported message type: {msg_type}"}
+            )
