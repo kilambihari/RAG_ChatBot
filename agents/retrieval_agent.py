@@ -1,3 +1,5 @@
+# agents/retrieval_agent.py
+
 from utils.mcp import parse_message, create_message
 from sentence_transformers import SentenceTransformer, util
 import torch
@@ -6,7 +8,7 @@ class RetrievalAgent:
     def __init__(self, name="RetrievalAgent"):
         self.name = name
         self.documents = []
-        self.embeddings = None
+        self.embeddings = []
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
     def handle_message(self, message):
@@ -16,12 +18,8 @@ class RetrievalAgent:
             content = payload["content"]
             self.documents.append(content)
 
-            new_embedding = self.model.encode(content, convert_to_tensor=True)
-
-            if self.embeddings is None:
-                self.embeddings = new_embedding.unsqueeze(0)
-            else:
-                self.embeddings = torch.cat((self.embeddings, new_embedding.unsqueeze(0)), dim=0)
+            embedding = self.model.encode(content, convert_to_tensor=True)
+            self.embeddings.append(embedding)
 
             return create_message(
                 self.name,
@@ -35,7 +33,7 @@ class RetrievalAgent:
             query = payload["query"]
             query_emb = self.model.encode(query, convert_to_tensor=True)
 
-            if self.embeddings is None or len(self.documents) == 0:
+            if not self.embeddings or not self.documents:
                 return create_message(
                     self.name,
                     sender,
@@ -44,9 +42,12 @@ class RetrievalAgent:
                     {"context": ""}
                 )
 
-            # ✅ Now embeddings is a stacked tensor (batch)
-            scores = util.cos_sim(query_emb, self.embeddings)[0]
-            best_idx = scores.argmax()
+            # ✅ Ensure embeddings are stacked into a single tensor
+            embedding_tensor = torch.stack(self.embeddings)
+
+            # ✅ Use cosine similarity correctly
+            scores = util.cos_sim(query_emb, embedding_tensor)[0]
+            best_idx = scores.argmax().item()
             best_chunk = self.documents[best_idx]
 
             return create_message(
