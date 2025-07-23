@@ -8,4 +8,7 @@ python-pptx
 pandas
 sentence_transformers
 langchain-google-genai
+pypdfium2
+pdfminer.six
+
 
