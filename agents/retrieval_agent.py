@@ -37,15 +37,22 @@ class RetrievalAgent:
     def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
             return ["⚠️ No documents have been stored yet."]
-        
+    
         cleaned_query = clean_text(query)
 
-        # Improve matching for short queries
-        if len(cleaned_query.split()) <= 4 and "who" in cleaned_query:
-            cleaned_query += " summary or description"
+        # Manually expand basic queries to match resume language
+        if "who is harivadan" in cleaned_query:
+            cleaned_query = "summary of Harivadan"
+        elif "experience" in cleaned_query:
+            cleaned_query = "work experience of Harivadan"
+        elif "certification" in cleaned_query:
+            cleaned_query = "certifications Harivadan has completed"
+        elif "skills" in cleaned_query:
+            cleaned_query = "technical skills listed in the resume"
 
         docs = self.vector_store.similarity_search(cleaned_query, k=k)
         return [doc.page_content for doc in docs]
+
 
     def handle_message(self, message: dict) -> dict:
         action = message.get("action")
