@@ -1,56 +1,80 @@
-# utils/parser.py
-
 import os
-import fitz  # PyMuPDF
-import csv
-import docx
+import textract
 import pptx
+import csv
 import markdown
-import pandas as pd
+import docx
+import PyPDF2
 
-def parse_file(file_path):
-    ext = os.path.splitext(file_path)[1].lower()
+def parse_document(file_path):
+    extension = os.path.splitext(file_path)[1].lower()
 
-    if ext == ".pdf":
+    if extension == ".pdf":
         return parse_pdf(file_path)
-    elif ext == ".docx":
+    elif extension == ".docx":
         return parse_docx(file_path)
-    elif ext == ".pptx":
+    elif extension == ".pptx":
         return parse_pptx(file_path)
-    elif ext == ".txt":
-        return parse_txt(file_path)
-    elif ext == ".csv":
+    elif extension == ".csv":
         return parse_csv(file_path)
-    elif ext == ".md":
+    elif extension == ".txt":
+        return parse_txt(file_path)
+    elif extension == ".md":
         return parse_md(file_path)
     else:
-        raise ValueError(f"Unsupported file format: {ext}")
+        raise ValueError("Unsupported file format")
 
 def parse_pdf(file_path):
-    doc = fitz.open(file_path)
-    return "\n".join([page.get_text() for page in doc])
+    text = ""
+    with open(file_path, "rb") as f:
+        reader = PyPDF2.PdfReader(f)
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+    return split_text(text)
 
 def parse_docx(file_path):
     doc = docx.Document(file_path)
-    return "\n".join([para.text for para in doc.paragraphs])
+    text = "\n".join([p.text for p in doc.paragraphs])
+    return split_text(text)
 
 def parse_pptx(file_path):
     prs = pptx.Presentation(file_path)
-    text = []
+    text = ""
     for slide in prs.slides:
         for shape in slide.shapes:
             if hasattr(shape, "text"):
-                text.append(shape.text)
-    return "\n".join(text)
+                text += shape.text + "\n"
+    return split_text(text)
+
+def parse_csv(file_path):
+    with open(file_path, newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        text = "\n".join(["\t".join(row) for row in reader])
+    return split_text(text)
 
 def parse_txt(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
-
-def parse_csv(file_path):
-    df = pd.read_csv(file_path)
-    return df.to_string(index=False)
+        text = f.read()
+    return split_text(text)
 
 def parse_md(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
-        return markdown.markdown(f.read())
+        html = markdown.markdown(f.read())
+    return split_text(html)
+
+def split_text(text, max_chunk_size=500):
+    words = text.split()
+    chunks = []
+    current = []
+    count = 0
+    for word in words:
+        current.append(word)
+        count += len(word)
+        if count >= max_chunk_size:
+            chunks.append(" ".join(current))
+            current = []
+            count = 0
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
