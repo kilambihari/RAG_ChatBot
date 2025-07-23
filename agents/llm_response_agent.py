@@ -1,41 +1,66 @@
-import google.generativeai as genai
-from utils.mcp import create_message, parse_message
 import os
+from utils.mcp import create_message, parse_message
+from utils.embedding import get_gemini_embedding
+from utils.gemini_wrapper import generate_gemini_response
 
 class LLMResponseAgent:
     def __init__(self):
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel("gemini-pro")
         self.name = "LLMResponseAgent"
-
-    def generate_answer(self, question, context):
-        prompt = f"""
-You are a helpful assistant. Use the context below to answer the user's question.
-If the context does not contain the answer, say so honestly.
-
----
-Context:
-{context}
-
-Question: {question}
-Answer:
-"""
-        try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-        except Exception as e:
-            return f"Error from Gemini: {str(e)}"
+        self.trace_id = None
+        self.query = ""
+        self.query_embedding = []
+        self.retrieved_chunks = []
 
     def handle_message(self, message):
         sender, receiver, msg_type, trace_id, payload = parse_message(message)
+        self.trace_id = trace_id
 
-        if msg_type != "query":
-            return create_message(self.name, sender, "error", trace_id, {"error": "Invalid message type"})
+        if msg_type == "USER_QUERY":
+            self.query = payload.get("query", "")
+            self.query_embedding = get_gemini_embedding(self.query)
+            return create_message(
+                sender=self.name,
+                receiver="RetrievalAgent",
+                msg_type="QUERY",
+                trace_id=trace_id,
+                payload={"query_embedding": self.query_embedding}
+            )
 
-        question = payload.get("question")
-        relevant_chunks = payload.get("relevant_chunks", [])
-        context = "\n".join(relevant_chunks)
+        elif msg_type == "RETRIEVAL_RESULT":
+            self.retrieved_chunks = payload.get("top_chunks", [])
+            prompt = self.build_prompt()
+            response = generate_gemini_response(prompt)
 
-        answer = self.generate_answer(question, context)
+            return create_message(
+                sender=self.name,
+                receiver="App",
+                msg_type="FINAL_ANSWER",
+                trace_id=trace_id,
+                payload={"response": response}
+            )
 
-        return create_message(self.name, sender, "response", trace_id, {"answer": answer})
+        elif msg_type == "READY":
+            # Acknowledgement from retrieval agent after ingestion
+            return create_message(
+                sender=self.name,
+                receiver="App",
+                msg_type="READY",
+                trace_id=trace_id,
+                payload={"status": "ready"}
+            )
+
+        else:
+            raise ValueError(f"Unsupported message type: {msg_type}")
+
+    def build_prompt(self):
+        context = "\n\n".join(self.retrieved_chunks)
+        prompt = f"""You are an expert assistant. Use the following context to answer the question:
+
+Context:
+{context}
+
+Question:
+{self.query}
+
+Answer:"""
+        return prompt
