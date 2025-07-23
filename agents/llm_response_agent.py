@@ -1,39 +1,51 @@
-from langchain_core.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain_google_genai import ChatGoogleGenerativeAI
-from utils.mcp import create_message
+# agents/llm_response_agent.py
+
+import google.generativeai as genai
+from utils.mcp import parse_message, create_message
+import streamlit as st
 
 class LLMResponseAgent:
-    def __init__(self, agent_id="LLMResponseAgent", api_key=None):
-        self.agent_id = agent_id
-        self.llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=api_key)
+    def __init__(self, name="LLMResponseAgent"):
+        self.name = name
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        self.model = genai.GenerativeModel("gemini-pro")
 
-    def handle_message(self, message: dict) -> dict:
-        sender = message.get("from")
-        receiver = message.get("to")
-        msg_type = message.get("type")
-        trace_id = message.get("trace_id", None)
-        payload = message.get("payload", {})
+    def handle_message(self, message):
+        sender, receiver, msg_type, trace_id, payload = parse_message(message)
 
-        query = payload.get("query")
-        context = payload.get("context")
+        if msg_type == "GENERATE":
+            query = payload["query"]
+            context = payload.get("context", "")
 
-        if not query or not context:
-            raise ValueError("Missing query or context in payload")
+            prompt = f"""You are a helpful assistant. Use the provided context to answer the user's query.
+Context:
+{context}
 
-        prompt = PromptTemplate(
-            input_variables=["context", "question"],
-            template="Answer the question based on the context:\n\nContext:\n{context}\n\nQuestion:\n{question}"
-        )
+Query:
+{query}
 
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        answer = chain.run({"context": context, "question": query})
+Answer:"""
 
-        return create_message(
-            sender=self.agent_id,
-            receiver=sender,
-            msg_type="LLM_RESPONSE",
-            trace_id=trace_id,
-            payload={"answer": answer}
-        )
+            try:
+                response = self.model.generate_content(prompt)
+                answer = response.text.strip()
+            except Exception as e:
+                answer = f"❌ Error: {str(e)}"
+
+            return create_message(
+                self.name,
+                sender,
+                "GENERATED",
+                trace_id,
+                {"response": answer}
+            )
+
+        else:
+            return create_message(
+                self.name,
+                sender,
+                "ERROR",
+                trace_id,
+                {"error": f"Unsupported message type: {msg_type}"}
+            )
 
