@@ -39,7 +39,7 @@ class IngestionAgent:
         chunks = parse_document(file_path)
 
         # Get embeddings using Gemini (or fallback to local model if needed)
-        embeddings = get_gemini_embedding(chunks)
+        embeddings = [get_gemini_embedding(chunk) for chunk in chunks]
 
         # Save embeddings to vector store (e.g., FAISS)
         save_embeddings(embeddings, chunks)
