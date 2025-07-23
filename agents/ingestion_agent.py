@@ -1,44 +1,36 @@
 import os
-from langchain_community.document_loaders import (
-    PyMuPDFLoader, UnstructuredWordDocumentLoader,
-    UnstructuredPowerPointLoader, TextLoader,
-    CSVLoader, UnstructuredMarkdownLoader
-)
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from utils.parser import parse_file
+from utils.chunker import chunk_text
 from utils.mcp import create_message
 
 class IngestionAgent:
-    def _get_loader(self, file_path):
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext == ".pdf":
-            return PyMuPDFLoader(file_path)
-        elif ext == ".docx":
-            return UnstructuredWordDocumentLoader(file_path)
-        elif ext == ".pptx":
-            return UnstructuredPowerPointLoader(file_path)
-        elif ext == ".txt":
-            return TextLoader(file_path)
-        elif ext == ".csv":
-            return CSVLoader(file_path)
-        elif ext == ".md":
-            return UnstructuredMarkdownLoader(file_path)
-        else:
-            raise ValueError(f"Unsupported file format: {ext}")
+    def __init__(self, agent_id="IngestionAgent"):
+        self.agent_id = agent_id
 
-    def handle_message(self, message):
-        sender, receiver, msg_type, trace_id, payload = message.values()
-        file_path = payload["file_path"]
+    def handle_message(self, message: dict) -> dict:
+        # ✅ Safely extract values from message
+        sender = message.get("from")
+        receiver = message.get("to")
+        msg_type = message.get("type")
+        trace_id = message.get("trace_id", None)
+        payload = message.get("payload", {})
 
-        loader = self._get_loader(file_path)
-        documents = loader.load()
+        file_path = payload.get("file_path")
+        if not file_path or not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found at: {file_path}")
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = splitter.split_documents(documents)
+        # ✅ Step 1: Parse document into raw text
+        text = parse_file(file_path)
 
-        return create_message(
-            sender="IngestionAgent",
-            receiver="RetrievalAgent",
-            msg_type="DOCUMENT_CHUNKS",
+        # ✅ Step 2: Split text into chunks
+        chunks = chunk_text(text)
+
+        # ✅ Step 3: Package response via MCP format
+        response = create_message(
+            sender=self.agent_id,
+            receiver=sender,
+            msg_type="INGESTION_RESPONSE",
             trace_id=trace_id,
             payload={"chunks": chunks}
         )
+        return response
