@@ -1,17 +1,13 @@
-# agents/retrieval_agent.py
-
 from langchain.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.messages import BaseMessage
-from langchain_core.runnables import Runnable
 from langchain_core.documents import Document
 
-class RetrievalAgent(Runnable):
+class RetrievalAgent:
     def __init__(self):
         self.vectorstore = None
 
     def _create_vectorstore(self, chunks: list[Document]):
-        # 👇 Force CPU to avoid NotImplementedError in non-GPU environments
+        # Use CPU embeddings from HuggingFace
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={"device": "cpu"}
@@ -24,9 +20,16 @@ class RetrievalAgent(Runnable):
         docs = self.vectorstore.similarity_search(query, k=4)
         return docs
 
-    def handle_message(self, message: BaseMessage) -> str:
-        query = message.content
-        relevant_chunks = self._retrieve_relevant_chunks(query)
-        if not relevant_chunks:
-            return "❌ Sorry, I couldn’t find any relevant information in the document."
-        return "\n\n".join([doc.page_content for doc in relevant_chunks])
+    def handle_message(self, message: dict) -> str:
+        if message["action"] == "store":
+            self._create_vectorstore(message["data"])
+            return "✅ Document stored successfully in vector DB."
+        elif message["action"] == "query":
+            query = message["data"]
+            relevant_chunks = self._retrieve_relevant_chunks(query)
+            if not relevant_chunks:
+                return "❌ Sorry, no relevant information found in the document."
+            return "\n\n".join([doc.page_content for doc in relevant_chunks])
+        else:
+            return "❌ Unknown message action."
+
