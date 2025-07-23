@@ -1,69 +1,46 @@
 import os
-import pickle
-from langchain.embeddings import HuggingFaceHubEmbeddings
+import tempfile
 from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
-from langchain_core.prompts import PromptTemplate
-import streamlit as st  # ✅ to access secrets
+from langchain.chains import RetrievalQA
 
 class RetrievalAgent:
-    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-        # ✅ Use secrets from Streamlit
-        hf_token = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
-        gemini_key = st.secrets["GEMINI_API_KEY"]
+    def __init__(self):
+        self.vectorstore = None
+        self.qa_chain = None
 
-        self.embeddings = HuggingFaceHubEmbeddings(
-            repo_id=model_name,
-            huggingfacehub_api_token=hf_token
-        )
+    def _create_vectorstore(self, chunks):
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        self.vectorstore = FAISS.from_documents(chunks, embeddings)
 
-        self.vector_store = None
-
-        self.llm = ChatGoogleGenerativeAI(
+    def _create_qa_chain(self):
+        llm = ChatGoogleGenerativeAI(
             model="gemini-pro",
-            temperature=0.2,
-            google_api_key=gemini_key
+            google_api_key=os.environ.get("GEMINI_API_KEY"),
+            temperature=0.3
+        )
+        retriever = self.vectorstore.as_retriever()
+        self.qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            retriever=retriever,
+            return_source_documents=False
         )
 
-        self.rewrite_chain = self._build_rewriter_chain()
+    def handle_message(self, message):
+        action = message.get("action")
+        data = message.get("data")
 
-    def _build_rewriter_chain(self):
-        prompt = PromptTemplate(
-            input_variables=["question"],
-            template="""You are an assistant helping improve search in a resume-based question-answering system.
-Rewrite the question into a form that matches how information is typically written in resumes.
+        if action == "store":
+            self._create_vectorstore(data)
+            self._create_qa_chain()
+            return "✅ Vectorstore created and LLM QA chain initialized."
+        
+        elif action == "query":
+            if self.qa_chain is None:
+                return "❌ QA chain is not initialized. Please upload a document first."
+            return self.qa_chain.run(data)
 
-Original question: {question}
-Improved search query:"""
-        )
-        return LLMChain(llm=self.llm, prompt=prompt)
-
-    def load_vector_store(self, index_path: str):
-        if os.path.exists(index_path):
-            with open(index_path, "rb") as f:
-                self.vector_store = pickle.load(f)
-
-    def save_vector_store(self, index_path: str):
-        if self.vector_store:
-            with open(index_path, "wb") as f:
-                pickle.dump(self.vector_store, f)
-
-    def set_vector_store(self, docs):
-        self.vector_store = FAISS.from_documents(docs, self.embeddings)
-
-    def retrieve(self, query: str, k: int = 3):
-        if not self.vector_store:
-            return ["⚠️ No documents have been stored yet."]
-
-        try:
-            rewritten = self.rewrite_chain.run(query)
-        except Exception as e:
-            rewritten = query
-            print(f"[⚠️ Rewrite failed] {e}")
-
-        print(f"[🔁 Rewritten Query] {rewritten}")
-        docs = self.vector_store.similarity_search(rewritten, k=k)
-        return [doc.page_content for doc in docs]
-
+        else:
+            return f"❌ Unknown action: {action}"
 
