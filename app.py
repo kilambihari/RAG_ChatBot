@@ -8,13 +8,9 @@ from agents.llm_response_agent import LLMResponseAgent
 from utils.file_handler import save_file
 from utils.mcp import create_message, parse_message
 
-# --- Page Config ---
 st.set_page_config(page_title="📄 RAG Chatbot", layout="centered")
-
 st.title("📄 Upload a Document")
-st.markdown("This chatbot supports **PDF, DOCX, PPTX, CSV, TXT, and MD** formats. Max size: 200MB.")
 
-# --- File Upload ---
 uploaded_file = st.file_uploader(
     "Upload a document",
     type=["pdf", "docx", "pptx", "csv", "txt", "md"],
@@ -22,49 +18,53 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    # --- Save File ---
     save_path = save_file(uploaded_file)
-    st.success(f"✅ File saved at: `{save_path}`")
+    st.success(f"✅ File saved at: {save_path}")
 
-    # --- Initialize Agents ---
+    trace_id = str(uuid.uuid4())
+
     ingestion_agent = IngestionAgent()
     retrieval_agent = RetrievalAgent()
     llm_agent = LLMResponseAgent()
 
-    # --- Ingest and Chunk ---
-    chunks = ingestion_agent.run(save_path)
-    if chunks:
-        st.subheader("📄 Document Chunks")
-        for i, chunk in enumerate(chunks[:10]):  # show only first 10 chunks
-            text = chunk.page_content if hasattr(chunk, "page_content") else str(chunk)
-            st.markdown(f"**Chunk {i+1}:** {text[:500]}{'...' if len(text) > 500 else ''}")
+    # --- MCP: Step 1 – Ingest document
+    ingest_msg = create_message(
+        sender="UI",
+        receiver="IngestionAgent",
+        msg_type="DOCUMENT_UPLOAD",
+        trace_id=trace_id,
+        payload={"file_path": save_path}
+    )
 
-        # --- Store in VectorDB ---
-        store_message = {"action": "store", "data": chunks}
-        retrieval_agent.handle_message(store_message)
+    ingestion_response = ingestion_agent.handle_message(ingest_msg)
+    chunks = ingestion_response["payload"]["chunks"]
+
+    # Display sample chunks
+    st.subheader("📄 Document Chunks")
+    for i, chunk in enumerate(chunks[:5]):
+        st.markdown(f"**Chunk {i+1}:** {chunk.page_content[:500]}{'...' if len(chunk.page_content) > 500 else ''}")
+
+    # --- MCP: Step 2 – Store chunks in vector DB
+    store_response = retrieval_agent.handle_message(ingestion_response)
+    if store_response["payload"]["status"] == "stored":
         st.success("✅ Document stored in vector database.")
 
-        # --- Question Answering ---
-        st.subheader("💬 Ask a Question")
-        question = st.text_input("Enter your question about the document")
+    # --- MCP: Step 3 – Q&A
+    st.subheader("💬 Ask a Question")
+    question = st.text_input("Enter your question about the document")
 
-        if question:
-            trace_id = str(uuid.uuid4())
-            query_msg = create_message(
-                sender="User",
-                receiver="RetrievalAgent",
-                msg_type="query",
-                trace_id=trace_id,
-                payload=question
-            )
+    if question:
+        query_msg = create_message(
+            sender="UI",
+            receiver="RetrievalAgent",
+            msg_type="QUERY",
+            trace_id=trace_id,
+            payload={"query": question}
+        )
 
-            # --- Get relevant chunks ---
-            raw_response = retrieval_agent.handle_message(query_msg)
-            relevant_chunks = raw_response.split("\n\n")
+        retrieval_response = retrieval_agent.handle_message(query_msg)
+        llm_response = llm_agent.handle_message(retrieval_response)
 
-            # --- Generate Answer ---
-            final_answer = llm_agent.generate_response(question, relevant_chunks)
-
-            st.markdown("### 🧠 Answer")
-            st.markdown(final_answer)
-
+        final_answer = llm_response["payload"]["answer"]
+        st.markdown("### 🧠 Answer")
+        st.markdown(final_answer)
