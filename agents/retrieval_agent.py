@@ -1,69 +1,56 @@
-# agents/retrieval_agent.py
-
-from utils.mcp import parse_message, create_message
 from sentence_transformers import SentenceTransformer, util
+from utils.mcp import MCPMessage
 import torch
 
 class RetrievalAgent:
-    def __init__(self, name="RetrievalAgent"):
-        self.name = name
+    def __init__(self):
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.documents = []
         self.embeddings = []
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
-    def handle_message(self, message):
-        sender, receiver, msg_type, trace_id, payload = parse_message(message)
-
-        if msg_type == "STORE":
-            content = payload["content"]
-            self.documents.append(content)
-
-            embedding = self.model.encode(content, convert_to_tensor=True)
-            self.embeddings.append(embedding)
-
-            return create_message(
-                self.name,
-                sender,
-                "STORED",
-                trace_id,
-                {"status": "Document stored"}
+    def handle_message(self, message: MCPMessage):
+        if message.type == "store_chunks":
+            self.documents = message.payload["chunks"]
+            self.embeddings = [
+                self.model.encode(chunk, convert_to_tensor=True)
+                for chunk in self.documents
+            ]
+            return MCPMessage(
+                sender="RetrievalAgent",
+                type="chunks_stored",
+                payload={"status": "stored", "num_chunks": len(self.documents)}
             )
 
-        elif msg_type == "RETRIEVE":
-            query = payload["query"]
-            query_emb = self.model.encode(query, convert_to_tensor=True)
-
-            if not self.embeddings or not self.documents:
-                return create_message(
-                    self.name,
-                    sender,
-                    "RETRIEVED",
-                    trace_id,
-                    {"context": ""}
+        elif message.type == "query":
+            query = message.payload["query"]
+            if not self.embeddings:
+                return MCPMessage(
+                    sender="RetrievalAgent",
+                    type="error",
+                    payload={"message": "No documents stored for retrieval."}
                 )
 
-            # ✅ Ensure embeddings are stacked into a single tensor
-            embedding_tensor = torch.stack(self.embeddings)
+            query_emb = self.model.encode(query, convert_to_tensor=True)
 
-            # ✅ Use cosine similarity correctly
-            scores = util.cos_sim(query_emb, embedding_tensor)[0]
-            best_idx = scores.argmax().item()
-            best_chunk = self.documents[best_idx]
+            # Ensure embeddings are stacked into a tensor (fixes the crash)
+            embeddings_tensor = torch.stack(self.embeddings)
 
-            return create_message(
-                self.name,
-                sender,
-                "RETRIEVED",
-                trace_id,
-                {"context": best_chunk}
+            scores = util.cos_sim(query_emb, embeddings_tensor)[0]
+            top_k = min(3, len(scores))  # handle less than 3 chunks
+            top_indices = torch.topk(scores, k=top_k).indices.tolist()
+            top_chunks = [self.documents[i] for i in top_indices]
+
+            return MCPMessage(
+                sender="RetrievalAgent",
+                type="retrieved_chunks",
+                payload={"chunks": top_chunks}
             )
 
         else:
-            return create_message(
-                self.name,
-                sender,
-                "ERROR",
-                trace_id,
-                {"error": f"Unsupported message type: {msg_type}"}
+            return MCPMessage(
+                sender="RetrievalAgent",
+                type="error",
+                payload={"message": f"Unknown message type: {message.type}"}
             )
+
 
