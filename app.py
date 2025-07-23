@@ -4,84 +4,65 @@ from agents.ingestion_agent import IngestionAgent
 from agents.retrieval_agent import RetrievalAgent
 from agents.llm_response_agent import LLMResponseAgent
 from utils.file_handler import save_file
-from utils.mcp import Message
+from utils.mcp import create_message
 
-# --- Page Config ---
+# --- App Config ---
 st.set_page_config(page_title="📄 RAG Chatbot", layout="centered")
 st.title("📄 Upload a Document")
 st.markdown("Upload a document to enable question answering:")
+
+# --- Agent Setup ---
+ingestion_agent = IngestionAgent()
+retrieval_agent = RetrievalAgent()
+llm_agent = LLMResponseAgent()
 
 # --- File Upload ---
 uploaded_file = st.file_uploader(
     "Upload a document",
     type=["pdf", "docx", "pptx", "csv", "txt", "md"],
-    help="Supported formats: PDF, DOCX, PPTX, CSV, TXT, MD",
+    help="Limit 200MB per file • PDF, DOCX, PPTX, CSV, TXT, MD"
 )
 
-# --- Agent Initialization ---
-ingestion_agent = IngestionAgent()
-retrieval_agent = RetrievalAgent()
-llm_response_agent = LLMResponseAgent()
-
-# --- File Processing & Embedding ---
-if uploaded_file is not None:
+if uploaded_file:
     file_path = save_file(uploaded_file)
     st.success(f"✅ File saved at: {file_path}")
 
-    # Create and send message to Ingestion Agent
-    ingestion_message = Message(
-        sender="app",
-        receiver="ingestion_agent",
-        content={"file_path": file_path},
-        metadata={"purpose": "ingest_document"},
+    # --- Ingest Document ---
+    trace_id = "session-001"
+    ingestion_message = create_message(
+        sender="App",
+        receiver="IngestionAgent",
+        msg_type="INGEST",
+        trace_id=trace_id,
+        payload={"file_path": file_path}
     )
-    try:
-        ingested_data = ingestion_agent.handle_message(ingestion_message)
-        st.success("✅ Document successfully ingested and embedded.")
-    except Exception as e:
-        st.error(f"❌ Error in ingestion: {e}")
 
-# --- Chatbot UI ---
-st.markdown("---")
-st.header("💬 Ask a Question")
+    ingestion_result = ingestion_agent.handle_message(ingestion_message)
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+    if ingestion_result["type"] == "READY":
+        st.success("✅ Document ingestion complete. You can now ask a question.")
 
-user_query = st.text_input("Type your question here")
+        # --- Question Input ---
+        user_query = st.text_input("Ask a question about the document:")
 
-if st.button("Ask") and user_query:
-    # Add user query to chat history
-    st.session_state.chat_history.append(("user", user_query))
+        if user_query:
+            # --- Send user query to LLM Agent ---
+            query_msg = create_message(
+                sender="App",
+                receiver="LLMResponseAgent",
+                msg_type="USER_QUERY",
+                trace_id=trace_id,
+                payload={"query": user_query}
+            )
+            query_forward = llm_agent.handle_message(query_msg)
 
-    # Message to RetrievalAgent
-    retrieval_message = Message(
-        sender="app",
-        receiver="retrieval_agent",
-        content={"query": user_query},
-        metadata={"purpose": "retrieve_relevant_chunks"},
-    )
-    try:
-        retrieved_chunks = retrieval_agent.handle_message(retrieval_message)
+            # --- Pass query embedding to RetrievalAgent ---
+            retrieved = retrieval_agent.handle_message(query_forward)
 
-        # Message to LLMResponseAgent
-        llm_message = Message(
-            sender="app",
-            receiver="llm_response_agent",
-            content={"query": user_query, "context": retrieved_chunks},
-            metadata={"purpose": "generate_response"},
-        )
-        final_answer = llm_response_agent.handle_message(llm_message)
-        st.session_state.chat_history.append(("bot", final_answer))
+            # --- Send retrieved chunks back to LLM Agent ---
+            final_answer_msg = llm_agent.handle_message(retrieved)
 
-    except Exception as e:
-        st.error(f"❌ Error during retrieval or LLM response: {e}")
-
-# --- Display Chat History ---
-if st.session_state.chat_history:
-    st.markdown("### 🧠 Chat History")
-    for role, message in st.session_state.chat_history:
-        if role == "user":
-            st.markdown(f"**👤 You:** {message}")
-        else:
-            st.markdown(f"**🤖 Bot:** {message}")
+            # --- Display Answer ---
+            final_answer = final_answer_msg["payload"]["response"]
+            st.markdown("### 📌 Answer:")
+            st.success(final_answer)
