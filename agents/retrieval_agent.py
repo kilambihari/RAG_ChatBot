@@ -1,76 +1,47 @@
 # agents/retrieval_agent.py
 
-from sentence_transformers import SentenceTransformer, util
-from utils.mcp import MCPMessage
+import os
+import pickle
 import torch
+from sentence_transformers import SentenceTransformer, util
+
+from utils.mcp import parse_message, create_message
 
 class RetrievalAgent:
     def __init__(self):
+        self.name = "RetrievalAgent"
+        self.embeddings = None
+        self.chunks = None
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
-        self.documents = []
-        self.embeddings = []
 
-    def handle_message(self, message: MCPMessage):
-        if message.type == "store_chunks":
-            self.documents = message.payload["chunks"]
-            self.embeddings = []
+    def load_embeddings(self, filename="vectorstore.pkl"):
+        if not os.path.exists(filename):
+            raise FileNotFoundError("Vector store not found. Please upload a document first.")
+        with open(filename, "rb") as f:
+            data = pickle.load(f)
+            self.embeddings = torch.tensor(data["embeddings"])
+            self.chunks = data["chunks"]
 
-            for chunk in self.documents:
-                emb = self.model.encode(chunk, convert_to_tensor=True)
-                if not isinstance(emb, torch.Tensor):
-                    emb = torch.tensor(emb)
-                self.embeddings.append(emb)
+    def retrieve_top_k_chunks(self, query, k=5):
+        query_emb = self.model.encode(query, convert_to_tensor=True)
+        scores = util.cos_sim(query_emb, self.embeddings)[0]
+        top_k = torch.topk(scores, k=k)
+        top_chunks = [self.chunks[idx] for idx in top_k.indices]
+        return top_chunks
 
-            return MCPMessage(
-                sender="RetrievalAgent",
-                type="chunks_stored",
-                payload={"status": "stored", "num_chunks": len(self.documents)}
-            )
+    def handle_message(self, message: dict) -> dict:
+        sender, receiver, msg_type, trace_id, payload = parse_message(message)
+        
+        self.load_embeddings()
+        query = payload.get("query")
+        top_chunks = self.retrieve_top_k_chunks(query)
 
-        elif message.type == "query":
-            query = message.payload["query"]
-
-            # Ensure we have embeddings and documents
-            if not self.embeddings or not self.documents:
-                return MCPMessage(
-                    sender="RetrievalAgent",
-                    type="error",
-                    payload={"message": "No documents available for retrieval."}
-                )
-
-            query_emb = self.model.encode(query, convert_to_tensor=True)
-            if not isinstance(query_emb, torch.Tensor):
-                query_emb = torch.tensor(query_emb)
-
-            try:
-                # Stack all embeddings into a tensor
-                stacked_embeddings = torch.stack(self.embeddings)
-
-                # Compute cosine similarity
-                scores = util.cos_sim(query_emb, stacked_embeddings)[0]
-
-                # Get top-k chunks
-                top_k = min(3, len(scores))
-                top_indices = torch.topk(scores, k=top_k).indices.tolist()
-                top_chunks = [self.documents[i] for i in top_indices]
-
-                return MCPMessage(
-                    sender="RetrievalAgent",
-                    type="retrieved_chunks",
-                    payload={"chunks": top_chunks}
-                )
-
-            except Exception as e:
-                return MCPMessage(
-                    sender="RetrievalAgent",
-                    type="error",
-                    payload={"message": f"Similarity error: {str(e)}"}
-                )
-
-        else:
-            return MCPMessage(
-                sender="RetrievalAgent",
-                type="error",
-                payload={"message": f"Unknown message type: {message.type}"}
-            )
+        response_payload = {"chunks": top_chunks}
+        return create_message(
+            sender=self.name,
+            receiver=sender,
+            msg_type="retrieval_result",
+            trace_id=trace_id,
+            payload=response_payload
+        )
 
