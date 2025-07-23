@@ -1,70 +1,63 @@
 import os
 import streamlit as st
+from utils.file_handler import save_file
 from agents.ingestion_agent import IngestionAgent
 from agents.retrieval_agent import RetrievalAgent
-from utils.mcp import create_message
+from agents.llm_response_agent import LLMResponseAgent
 
-# --- Streamlit Setup ---
-st.set_page_config(page_title="RAG Chatbot - Upload & Ingest", layout="centered")
+# --- Set Page Config ---
+st.set_page_config(page_title="📄 RAG Chatbot", layout="centered")
+
+# --- Load API Keys from Streamlit Secrets ---
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
+os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+
+# --- App Title ---
 st.title("📄 Upload a Document")
+st.write("Upload a document")
 
 # --- File Upload ---
-uploaded_file = st.file_uploader("Upload a document", type=["pdf", "docx", "pptx", "csv", "txt", "md"])
+uploaded_file = st.file_uploader(
+    "Upload a document", type=["pdf", "docx", "pptx", "csv", "txt", "md"]
+)
 
-# --- Handle File Upload ---
 if uploaded_file:
-    # Save file to disk
-    uploads_dir = "uploads"
-    os.makedirs(uploads_dir, exist_ok=True)
-    file_path = os.path.join(uploads_dir, uploaded_file.name)
+    # --- Save uploaded file ---
+    save_path = save_file(uploaded_file)
+    st.success(f"✅ File saved at: {save_path}")
 
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    st.success(f"✅ File saved at: `{file_path}`")
-
-    # --- Ingest Using Agent ---
+    # --- Chunk document using IngestionAgent ---
     ingestion_agent = IngestionAgent()
-    message = create_message("App", "IngestionAgent", "ingest", "123", {"file_path": file_path})
-    response = ingestion_agent.handle_message(message)
+    chunks = ingestion_agent.run(save_path)
 
-    # --- Show Result ---
-    chunks = response["payload"].get("chunks", [])
     st.subheader("📄 Document Chunks")
-    for i, chunk in enumerate(chunks[:5]):
-        st.markdown(f"**Chunk {i+1}:** {chunk}")
+    for i, chunk in enumerate(chunks):
+        st.markdown(f"**Chunk {i+1}:** {chunk[:500]}{'...' if len(chunk) > 500 else ''}")
 
-    # --- Initialize Retrieval Agent with API Key ---
-    api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
-    if not api_key:
-        st.error("❌ Gemini API key not found. Set GEMINI_API_KEY in environment or Streamlit secrets.")
-    else:
-        retrieval_agent = RetrievalAgent()
+    # --- Store Chunks into Vector Store using RetrievalAgent ---
+    retrieval_agent = RetrievalAgent()
+    retrieval_agent.store(chunks)
+    st.success("✅ Chunks stored in vector index.")
 
-        # --- Store Chunks ---
-        store_message = create_message("App", "RetrievalAgent", "store", "456", {"chunks": chunks})
-        store_response = retrieval_agent.handle_message(store_message)
+    # --- Ask Questions Section ---
+    st.subheader("💬 Ask a Question from Document")
+    user_question = st.text_input("Enter your question:")
 
-        st.success("✅ Chunks stored in vector index.")
+    if user_question:
+        relevant_chunks = retrieval_agent.retrieve(user_question)
 
-        # --- Ask a Question ---
-        st.subheader("💬 Ask a Question from Document")
-        query = st.text_input("Enter your question:")
+        st.subheader("🔍 Retrieved Chunks")
+        if not relevant_chunks:
+            st.warning("⚠️ No relevant chunks found for this question.")
+        else:
+            for i, chunk in enumerate(relevant_chunks):
+                st.markdown(f"**Chunk {i+1}:** {chunk[:500]}{'...' if len(chunk) > 500 else ''}")
 
-        if query:
-            query_message = create_message("App", "RetrievalAgent", "retrieve", "789", {"query": query})
-            query_response = retrieval_agent.handle_message(query_message)
-            matches = query_response["payload"].get("matches", [])
+            # --- Generate response from LLMResponseAgent ---
+            llm_agent = LLMResponseAgent()
+            answer = llm_agent.run(relevant_chunks, user_question)
 
-            st.subheader("🔍 Retrieved Chunks")
-            if matches:
-                for i, match in enumerate(matches):
-                    text = match.get("text", match)  # fallback if not dict
-                    st.markdown(f"**Match {i+1}:** {text}")
-            else:
-                st.warning("No relevant chunks found for this question.")
-
-
-
+            st.subheader("🧠 LLM Response")
+            st.markdown(answer)
 
 
