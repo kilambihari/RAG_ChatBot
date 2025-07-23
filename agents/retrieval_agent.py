@@ -1,16 +1,18 @@
-# agents/retrieval_agent.py
-
 import os
+import re
 from langchain_community.embeddings import HuggingFaceHubEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-from utils.mcp import create_message, parse_message
+def clean_text(text: str) -> str:
+    """Normalize text for better embedding and matching."""
+    text = text.lower()
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
 class RetrievalAgent:
-    def __init__(self, name="RetrievalAgent", model_name="sentence-transformers/all-MiniLM-L6-v2"):
-        self.name = name
+    def __init__(self, model_name="BAAI/bge-small-en-v1.5"):
         token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
         if not token:
             raise ValueError("❌ Hugging Face API token not found in environment!")
@@ -21,35 +23,42 @@ class RetrievalAgent:
         )
         self.vector_store = None
 
-    def store(self, chunks: list[str]):
-        docs = [Document(page_content=txt) for txt in chunks]
-        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    def store(self, texts: list[str]):
+        docs = [Document(page_content=clean_text(txt)) for txt in texts]
+        splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
         split_docs = splitter.split_documents(docs)
 
         texts_only = [doc.page_content for doc in split_docs]
-        metadatas = [doc.metadata for doc in split_docs]  # Empty metadata, still required
+        metadatas = [doc.metadata for doc in split_docs]
 
         self.vector_store = FAISS.from_texts(texts_only, self.embeddings, metadatas=metadatas)
 
     def retrieve(self, query: str, k: int = 3):
         if not self.vector_store:
             return ["⚠️ No documents have been stored yet."]
-        docs = self.vector_store.similarity_search(query, k=k)
+        
+        cleaned_query = clean_text(query)
+
+        # Optional: Add hint to short queries like "Who is Harivadan"
+        if len(cleaned_query.split()) <= 4 and "who" in cleaned_query:
+            cleaned_query += " summary or description"
+
+        docs = self.vector_store.similarity_search(cleaned_query, k=k)
         return [doc.page_content for doc in docs]
 
     def handle_message(self, message: dict) -> dict:
-        sender, receiver, msg_type, trace_id, payload = parse_message(message)
+        action = message.get("action")
+        payload = message.get("payload", {})
 
-        if msg_type == "store":
+        if action == "store":
             chunks = payload.get("chunks", [])
             self.store(chunks)
-            return create_message(self.name, sender, "stored", trace_id, {"message": "Chunks stored."})
+            return {"status": "success", "payload": {"message": "Stored"}}
 
-        elif msg_type == "retrieve":
+        elif action == "retrieve":
             query = payload.get("query", "")
             matches = self.retrieve(query)
-            return create_message(self.name, sender, "retrieved", trace_id, {"matches": matches})
+            return {"status": "success", "payload": {"matches": matches}}
 
         else:
-            return create_message(self.name, sender, "error", trace_id, {"error": "Unknown message type"})
-
+            return {"status": "error", "payload": {"message": "Unknown action"}}
