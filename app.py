@@ -4,7 +4,7 @@ from agents.ingestion_agent import IngestionAgent
 from agents.retrieval_agent import RetrievalAgent
 from agents.llm_response_agent import LLMResponseAgent
 from utils.file_handler import save_file
-from utils.mcp import create_message
+from utils.mcp import create_message, parse_message
 
 # --- App Config ---
 st.set_page_config(page_title="📄 RAG Chatbot", layout="centered")
@@ -39,7 +39,10 @@ if uploaded_file:
 
     ingestion_result = ingestion_agent.handle_message(ingestion_message)
 
-    if ingestion_result["type"] == "READY":
+    # ✅ Parse MCP message string
+    sender, receiver, msg_type, trace_id, payload = parse_message(ingestion_result)
+
+    if msg_type == "READY":
         st.success("✅ Document ingestion complete. You can now ask a question.")
 
         # --- Question Input ---
@@ -62,7 +65,9 @@ if uploaded_file:
             # --- Send retrieved chunks back to LLM Agent ---
             final_answer_msg = llm_agent.handle_message(retrieved)
 
-            # --- Display Answer ---
-            final_answer = final_answer_msg["payload"]["response"]
-            st.markdown("### 📌 Answer:")
-            st.success(final_answer)
+            # ✅ Parse final response
+            _, _, final_type, _, final_payload = parse_message(final_answer_msg)
+
+            if final_type == "FINAL_ANSWER":
+                st.markdown("### 📌 Answer:")
+                st.success(final_payload["response"])
