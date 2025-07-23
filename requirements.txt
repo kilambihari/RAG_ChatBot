@@ -9,3 +9,6 @@ sentence-transformers
 faiss-cpu
 textract
 PyPDF2
+transformers
+torch
+scikit-learn
