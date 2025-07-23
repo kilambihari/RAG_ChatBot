@@ -1,3 +1,5 @@
+# utils/parser.py
+
 import os
 import fitz  # PyMuPDF
 import csv
