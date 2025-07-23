@@ -1,16 +1,8 @@
 streamlit
-langchain-community
-langchain
-faiss-cpu
+google-generativeai
 PyMuPDF
-python-docx
 python-pptx
+python-docx
+markdown
 pandas
-sentence_transformers
-langchain-google-genai
-pypdfium2
-pdfminer.six
-huggingface_hub
-unstructured
-
 
