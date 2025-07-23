@@ -1,62 +1,77 @@
-from sklearn.metrics.pairwise import cosine_similarity
+import os
+import faiss
 import numpy as np
-from utils.mcp import create_message, parse_message
+import pickle
 
+from utils.mcp import create_message, parse_message
 
 class RetrievalAgent:
     def __init__(self):
         self.name = "RetrievalAgent"
-        self.stored_chunks = []
-        self.stored_embeddings = []
+        self.index = None
+        self.chunks = []
+        self.file_path = ""
+        self.index_path = "vector_store/index.faiss"
+        self.meta_path = "vector_store/meta.pkl"
 
-    def store_document(self, chunks, embeddings):
-        self.stored_chunks = chunks
-        self.stored_embeddings = np.array(embeddings)
+    def build_vector_store(self, embeddings):
+        dim = len(embeddings[0])
+        self.index = faiss.IndexFlatL2(dim)
+        self.index.add(np.array(embeddings).astype("float32"))
 
-    def retrieve_relevant_chunk(self, question_embedding):
-        if not self.stored_embeddings.any():
-            return "No document embeddings stored."
+    def save_vector_store(self, embeddings, chunks, file_path):
+        os.makedirs("vector_store", exist_ok=True)
+        self.build_vector_store(embeddings)
+        faiss.write_index(self.index, self.index_path)
+        with open(self.meta_path, "wb") as f:
+            pickle.dump({"chunks": chunks, "file_path": file_path}, f)
 
-        similarities = cosine_similarity(
-            np.array(question_embedding).reshape(1, -1),
-            self.stored_embeddings
-        )[0]
+    def load_vector_store(self):
+        if not os.path.exists(self.index_path) or not os.path.exists(self.meta_path):
+            raise FileNotFoundError("Vector store not found.")
+        self.index = faiss.read_index(self.index_path)
+        with open(self.meta_path, "rb") as f:
+            data = pickle.load(f)
+            self.chunks = data["chunks"]
+            self.file_path = data["file_path"]
 
-        best_idx = int(np.argmax(similarities))
-        return self.stored_chunks[best_idx]
+    def search(self, query_embedding, top_k=5):
+        if self.index is None:
+            self.load_vector_store()
+        D, I = self.index.search(np.array([query_embedding]).astype("float32"), top_k)
+        return [self.chunks[i] for i in I[0]]
 
     def handle_message(self, message):
         sender, receiver, msg_type, trace_id, payload = parse_message(message)
 
-        if msg_type == "ingestion_result":
-            chunks = payload["chunks"]
-            embeddings = payload["embeddings"]
-            self.store_document(chunks, embeddings)
+        if msg_type == "INGESTION_RESULT":
+            chunks = payload.get("chunks", [])
+            embeddings = payload.get("embeddings", [])
+            file_path = payload.get("file_path", "")
+            self.chunks = chunks
+            self.file_path = file_path
+            self.save_vector_store(embeddings, chunks, file_path)
+
             return create_message(
                 sender=self.name,
                 receiver="LLMResponseAgent",
-                msg_type="ready_for_questions",
+                msg_type="READY",
                 trace_id=trace_id,
-                payload={"status": "stored"}
+                payload={"file_path": file_path}
             )
 
-        elif msg_type == "query":
-            question_embedding = payload["question_embedding"]
-            retrieved_chunk = self.retrieve_relevant_chunk(question_embedding)
+        elif msg_type == "QUERY":
+            query_embedding = payload.get("query_embedding")
+            if query_embedding is None:
+                raise ValueError("Missing query embedding in payload")
+            top_chunks = self.search(query_embedding)
             return create_message(
                 sender=self.name,
                 receiver="LLMResponseAgent",
-                msg_type="retrieved_context",
+                msg_type="RETRIEVAL_RESULT",
                 trace_id=trace_id,
-                payload={"context": retrieved_chunk}
+                payload={"top_chunks": top_chunks}
             )
 
         else:
-            return create_message(
-                sender=self.name,
-                receiver=sender,
-                msg_type="error",
-                trace_id=trace_id,
-                payload={"error": f"Unknown message type: {msg_type}"}
-            )
-
+            raise ValueError(f"Unsupported message type: {msg_type}")
