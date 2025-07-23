@@ -1,44 +1,62 @@
-import os
-import pickle
-from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from utils.mcp import create_message, parse_message
 
+
 class RetrievalAgent:
-    def __init__(self, name="RetrievalAgent", storage_path="vector_store.pkl", top_k=3):
-        self.name = name
-        self.storage_path = storage_path
-        self.top_k = top_k
-        self.model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")  # Force CPU
-        self.texts = []
-        self.embeddings = None
+    def __init__(self):
+        self.name = "RetrievalAgent"
+        self.stored_chunks = []
+        self.stored_embeddings = []
 
-    def load_embeddings(self):
-        if not os.path.exists(self.storage_path):
-            raise FileNotFoundError("Vector store not found. Please upload a document first.")
-        with open(self.storage_path, "rb") as f:
-            self.texts, self.embeddings = pickle.load(f)
+    def store_document(self, chunks, embeddings):
+        self.stored_chunks = chunks
+        self.stored_embeddings = np.array(embeddings)
 
-    def retrieve(self, query):
-        query_embedding = self.model.encode([query])[0]
-        scores = np.dot(self.embeddings, query_embedding)
-        top_indices = np.argsort(scores)[-self.top_k:][::-1]
-        return [self.texts[i] for i in top_indices]
+    def retrieve_relevant_chunk(self, question_embedding):
+        if not self.stored_embeddings.any():
+            return "No document embeddings stored."
+
+        similarities = cosine_similarity(
+            np.array(question_embedding).reshape(1, -1),
+            self.stored_embeddings
+        )[0]
+
+        best_idx = int(np.argmax(similarities))
+        return self.stored_chunks[best_idx]
 
     def handle_message(self, message):
         sender, receiver, msg_type, trace_id, payload = parse_message(message)
 
-        if msg_type != "RETRIEVE":
-            raise ValueError("Unsupported message type")
+        if msg_type == "ingestion_result":
+            chunks = payload["chunks"]
+            embeddings = payload["embeddings"]
+            self.store_document(chunks, embeddings)
+            return create_message(
+                sender=self.name,
+                receiver="LLMResponseAgent",
+                msg_type="ready_for_questions",
+                trace_id=trace_id,
+                payload={"status": "stored"}
+            )
 
-        query = payload["query"]
-        self.load_embeddings()
-        results = self.retrieve(query)
+        elif msg_type == "query":
+            question_embedding = payload["question_embedding"]
+            retrieved_chunk = self.retrieve_relevant_chunk(question_embedding)
+            return create_message(
+                sender=self.name,
+                receiver="LLMResponseAgent",
+                msg_type="retrieved_context",
+                trace_id=trace_id,
+                payload={"context": retrieved_chunk}
+            )
 
-        return create_message(
-            sender=self.name,
-            receiver=sender,
-            msg_type="RETRIEVED",
-            trace_id=trace_id,
-            payload={"results": results}
-        )
+        else:
+            return create_message(
+                sender=self.name,
+                receiver=sender,
+                msg_type="error",
+                trace_id=trace_id,
+                payload={"error": f"Unknown message type: {msg_type}"}
+            )
+
