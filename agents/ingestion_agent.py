@@ -1,10 +1,11 @@
+import os
 from langchain_community.document_loaders import (
     PyMuPDFLoader, UnstructuredWordDocumentLoader,
     UnstructuredPowerPointLoader, TextLoader,
     CSVLoader, UnstructuredMarkdownLoader
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import os
+from utils.mcp import create_message
 
 class IngestionAgent:
     def _get_loader(self, file_path):
@@ -24,15 +25,20 @@ class IngestionAgent:
         else:
             raise ValueError(f"Unsupported file format: {ext}")
 
-    def run(self, file_path):
+    def handle_message(self, message):
+        sender, receiver, msg_type, trace_id, payload = message.values()
+        file_path = payload["file_path"]
+
         loader = self._get_loader(file_path)
         documents = loader.load()
 
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         chunks = splitter.split_documents(documents)
-        return chunks
 
-
+        return create_message(
+            sender="IngestionAgent",
+            receiver="RetrievalAgent",
+            msg_type="DOCUMENT_CHUNKS",
+            trace_id=trace_id,
+            payload={"chunks": chunks}
+        )
