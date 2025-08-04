@@ -1,44 +1,24 @@
 import os
-from PyPDF2 import PdfReader
-import docx
-import pptx
-import csv
+from utils.parsers.pdf import parse_pdf
+from utils.parsers.docx import parse_docx
+from utils.parsers.txt import parse_txt
+from utils.parsers.pptx import parse_pptx
+from utils.parsers.csv import parse_csv
+from utils.parsers.md import parse_md
 
 def parse_document(file_path):
     ext = os.path.splitext(file_path)[1].lower()
-
     if ext == ".pdf":
-        reader = PdfReader(file_path)
-        return [page.extract_text() for page in reader.pages if page.extract_text()]
-
+        return parse_pdf(file_path)
     elif ext == ".docx":
-        doc = docx.Document(file_path)
-        return [para.text for para in doc.paragraphs if para.text.strip()]
-
-    elif ext == ".pptx":
-        prs = pptx.Presentation(file_path)
-        slides = []
-        for slide in prs.slides:
-            text = " ".join([shape.text for shape in slide.shapes if hasattr(shape, "text")])
-            if text.strip():
-                slides.append(text)
-        return slides
-
+        return parse_docx(file_path)
     elif ext == ".txt":
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read().splitlines()
-
+        return parse_txt(file_path)
+    elif ext == ".pptx":
+        return parse_pptx(file_path)
     elif ext == ".csv":
-        rows = []
-        with open(file_path, "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                rows.append(" | ".join(row))
-        return rows
-
+        return parse_csv(file_path)
     elif ext == ".md":
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read().splitlines()
-
+        return parse_md(file_path)
     else:
-        raise ValueError(f"Unsupported file format: {ext}")
+        raise ValueError("Unsupported file format")
