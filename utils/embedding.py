@@ -1,7 +1,7 @@
 import google.generativeai as genai
 import streamlit as st
 
-genai.configure(api_key=st.secrets["gemini_api_key"])
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 EMBED_MODEL = "models/embedding-001"
 
