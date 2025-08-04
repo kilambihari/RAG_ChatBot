@@ -4,6 +4,8 @@ import os
 import pickle
 
 VECTOR_STORE_PATH = "data/vector_store/"
+os.makedirs(VECTOR_STORE_PATH, exist_ok=True)
+
 
 def save_embeddings(doc_id, chunks, embeddings):
     dim = len(embeddings[0])
