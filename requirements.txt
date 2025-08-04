@@ -7,4 +7,4 @@ python-pptx
 pypdf2
 pandas
 markdown
-google-generativeai
+google-generativeai==0.3.2
