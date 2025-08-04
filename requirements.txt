@@ -1,30 +1,9 @@
-# Streamlit for UI
 streamlit
-
-# Google Gemini APIs
-google-generativeai
-langchain_google_genai
-
-# LLM and embeddings
+faiss-cpu
 transformers
 torch
-sentence-transformers
-scikit-learn
-
-# File parsing (PDF, DOCX, PPTX, MD, CSV)
-PyMuPDF
-PyPDF2
 python-docx
 python-pptx
-markdown
+pypdf2
 pandas
-textract
 
-# Vector store
-faiss-cpu
-
-# Optional: For DOCX with embedded images or edge cases
-lxml
-
-# Optional: Faster tokenizer
-tiktoken
