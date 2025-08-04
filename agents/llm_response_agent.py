@@ -1,7 +1,7 @@
 import google.generativeai as genai
 import streamlit as st
 
-# ✅ Step 1: Configure API Key
+# Configure Gemini API
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 class LLMResponseAgent:
@@ -10,13 +10,15 @@ class LLMResponseAgent:
         query = message["payload"]["query"]
 
         model = genai.GenerativeModel("gemini-pro")
+        context_text = "\n\n".join(context_chunks)
 
-        prompt = f"Context:\n{context_chunks}\n\nQuestion: {query}\nAnswer:"
-        
+        prompt = f"Context:\n{context_text}\n\nQuestion: {query}\nAnswer:"
+
         try:
             response = model.generate_content(prompt)
+            answer = response.text if hasattr(response, "text") else str(response)
             return {
-                "answer": response.text,
+                "answer": answer,
                 "source_chunks": context_chunks
             }
         except Exception as e:
