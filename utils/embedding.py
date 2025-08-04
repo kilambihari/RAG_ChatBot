@@ -22,7 +22,7 @@ def get_gemini_embedding(chunks):
 
 def query_gemini_llm(prompt):
     try:
-        model = genai.GenerativeModel("gemini-pro")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
