@@ -6,4 +6,5 @@ python-docx
 python-pptx
 pypdf2
 pandas
-
+markdown
+google-generativeai
