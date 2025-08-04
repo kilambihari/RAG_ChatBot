@@ -3,7 +3,7 @@ import streamlit as st
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-EMBED_MODEL = "embedding-001"
+EMBED_MODEL = "models/embedding-001"
 
 def get_gemini_embedding(chunks):
     embeddings = []
