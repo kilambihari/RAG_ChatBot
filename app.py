@@ -5,6 +5,9 @@ from agents.retrieval_agent import RetrievalAgent
 from agents.llm_response_agent import LLMResponseAgent
 from utils.mcp import create_message, generate_trace_id
 
+os.makedirs("data", exist_ok=True)
+os.makedirs("data/vector_store", exist_ok=True)
+
 st.set_page_config(page_title="Agentic RAG with MCP", layout="wide")
 st.title("Agentic RAG Chatbot (with MCP)")
 
