@@ -3,71 +3,39 @@ import streamlit as st
 from agents.ingestion_agent import IngestionAgent
 from agents.retrieval_agent import RetrievalAgent
 from agents.llm_response_agent import LLMResponseAgent
-from utils.file_handler import save_file
-from utils.mcp import create_message, parse_message
+from utils.mcp import create_message, generate_trace_id
 
-# --- App Config ---
-st.set_page_config(page_title="📄 RAG Chatbot", layout="centered")
-st.title("📄 Upload a Document")
-st.markdown("Upload a document to enable question answering:")
+st.set_page_config(page_title="Agentic RAG with MCP", layout="wide")
+st.title("Agentic RAG Chatbot (with MCP)")
 
-# --- Agent Setup ---
-ingestion_agent = IngestionAgent()
-retrieval_agent = RetrievalAgent()
-llm_agent = LLMResponseAgent()
+uploaded = st.file_uploader("Upload a document", type=["pdf","docx","txt","md","csv","pptx"])
+if uploaded:
+    os.makedirs("data", exist_ok=True)
+    path = os.path.join("data", uploaded.name)
+    with open(path, "wb") as f: 
+        f.write(uploaded.read())
+    st.success(f"Uploaded {uploaded.name}")
 
-# --- File Upload ---
-uploaded_file = st.file_uploader(
-    "Upload a document",
-    type=["pdf", "docx", "pptx", "csv", "txt", "md"],
-    help="Limit 200MB per file • PDF, DOCX, PPTX, CSV, TXT, MD"
-)
+ingestor = IngestionAgent()
+retriever = RetrievalAgent()
+responder = LLMResponseAgent()
 
-if uploaded_file:
-    file_path = save_file(uploaded_file)
-    st.success(f"✅ File saved at: {file_path}")
+if uploaded and st.button("Process Document"):
+    trace = generate_trace_id()
+    msg_ingest = create_message("User","IngestionAgent","INGEST_REQUEST",trace,{"file_path":path})
+    ingest_resp = ingestor.handle_message(msg_ingest)
+    st.success("Document parsed and indexed.")
 
-    # --- Ingest Document ---
-    trace_id = "session-001"
-    ingestion_message = create_message(
-        sender="App",
-        receiver="IngestionAgent",
-        msg_type="INGEST",
-        trace_id=trace_id,
-        payload={"file_path": file_path}
-    )
+    user_q = st.text_input("Enter your question:")
+    if user_q:
+        msg_retrieve = create_message("User","RetrievalAgent","RETRIEVE_REQUEST",trace,{"query":user_q,"doc_id":ingest_resp["doc_id"]})
+        retrieve_resp = retriever.handle_message(msg_retrieve)
 
-    ingestion_result = ingestion_agent.handle_message(ingestion_message)
+        msg_llm = create_message("RetrievalAgent","LLMResponseAgent","CONTEXT_RESPONSE",trace,retrieve_resp)
+        llm_resp = responder.handle_message(msg_llm)
 
-    # ✅ Parse MCP message string
-    sender, receiver, msg_type, trace_id, payload = parse_message(ingestion_result)
-
-    if msg_type == "READY":
-        st.success("✅ Document ingestion complete. You can now ask a question.")
-
-        # --- Question Input ---
-        user_query = st.text_input("Ask a question about the document:")
-
-        if user_query:
-            # --- Send user query to LLM Agent ---
-            query_msg = create_message(
-                sender="App",
-                receiver="LLMResponseAgent",
-                msg_type="USER_QUERY",
-                trace_id=trace_id,
-                payload={"query": user_query}
-            )
-            query_forward = llm_agent.handle_message(query_msg)
-
-            # --- Pass query embedding to RetrievalAgent ---
-            retrieved = retrieval_agent.handle_message(query_forward)
-
-            # --- Send retrieved chunks back to LLM Agent ---
-            final_answer_msg = llm_agent.handle_message(retrieved)
-
-            # ✅ Parse final response
-            _, _, final_type, _, final_payload = parse_message(final_answer_msg)
-
-            if final_type == "FINAL_ANSWER":
-                st.markdown("### 📌 Answer:")
-                st.success(final_payload["response"])
+        st.markdown("### 🤖 Answer")
+        st.write(llm_resp["answer"])
+        st.markdown("### 📚 Source Context")
+        for c in llm_resp["source_chunks"]:
+            st.code(c)
