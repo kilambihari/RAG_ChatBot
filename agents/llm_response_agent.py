@@ -2,7 +2,7 @@ import google.generativeai as genai
 import streamlit as st
 
 # ✅ Step 1: Configure API Key
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+genai.configure(api_key=st.secrets["gemini_api_key"])
 
 class LLMResponseAgent:
     def handle_message(self, message):
