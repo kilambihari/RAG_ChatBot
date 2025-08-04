@@ -9,7 +9,7 @@ class LLMResponseAgent:
         context_chunks = message["payload"]["top_chunks"]
         query = message["payload"]["query"]
 
-        model = genai.GenerativeModel("gemini-pro")
+        model = genai.GenerativeModel("models/gemini-pro")
 
         prompt = f"Context:\n{context_chunks}\n\nQuestion: {query}\nAnswer:"
         
