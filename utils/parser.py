@@ -27,9 +27,14 @@ def parse_pptx(file_path):
     prs = pptx.Presentation(file_path)
     text_runs = []
     for slide in prs.slides:
+        slide_text = []
         for shape in slide.shapes:
             if hasattr(shape, "text"):
-                text_runs.append(shape.text)
+                text = shape.text.strip()
+                if text:
+                    slide_text.append(text)
+        if slide_text:
+            text_runs.append(" ".join(slide_text))
     return text_runs
 
 def parse_md(file_path):
