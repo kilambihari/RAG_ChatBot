@@ -4,13 +4,25 @@ A multi-agent **Retrieval-Augmented Generation (RAG)** chatbot powered by **Gemi
 
 ## 🚀 Features
 
-- 📄 Upload and parse documents (PDF, DOCX, TXT, PPTX, CSV, MD)
-- 🤖 Agent-based architecture using Model Context Protocol
-- 🔎 Embedding + vector store search (FAISS + SentenceTransformers)
-- 💬 Natural language Q&A with Gemini Pro or Flash
-- 🧩 Modular Agents: IngestionAgent, RetrievalAgent, LLMResponseAgent
-- 🌐 Deployable directly via Streamlit Cloud
-- ✅ Supports Gemini API with `gemini-pro` or `gemini-1.5-flash`
+📄 Multi-format Document Upload: Supports PDF, DOCX, TXT, PPTX, CSV, MD for ingestion
+
+🤖 Agent-based Architecture: Built with Model Context Protocol (MCP) to facilitate modular communication
+
+🔎 Semantic Search: Uses Gemini Embeddings + FAISS vector store for fast, relevant retrieval
+
+💬 LLM-Powered Chatbot: Natural language Q&A via Gemini Pro or Gemini 1.5 Flash
+
+🧩 Modular Agents:
+
+IngestionAgent: Parses and chunks documents
+
+RetrievalAgent: Retrieves relevant content using vector similarity
+
+LLMResponseAgent: Generates human-like answers using Gemini LLMs
+
+🌐 Deployable via Streamlit Cloud: Fully web-based, no local setup required
+
+✅ Gemini API Ready: Easily switch between gemini-pro or gemini-1.5-flash
 
 ---
 
