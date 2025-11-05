@@ -1,30 +1,40 @@
 import google.generativeai as genai
-import streamlit as st
+import os
 
-# Configure Gemini API
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 class LLMResponseAgent:
     def handle_message(self, message):
-        context_chunks = message["payload"]["top_chunks"]
-        query = message["payload"]["query"]
+        query = message["data"].get("query", "")
+        context_chunks = message["data"].get("chunks", [])
 
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        context_text = "\n\n".join(context_chunks)
+        context = "\n\n".join(context_chunks)
+        prompt = f"""You are an AI assistant using RAG.
+Use the following context to answer the user query.
 
-        prompt = f"Context:\n{context_text}\n\nQuestion: {query}\nAnswer:"
+Context:
+{context}
+
+User query:
+{query}
+
+Answer clearly and concisely based on the given context."""
 
         try:
+            # ✅ Correct model name
+            model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
-            answer = response.text if hasattr(response, "text") else str(response)
+            answer = response.text
+
             return {
                 "answer": answer,
                 "source_chunks": context_chunks
             }
+
         except Exception as e:
-            st.error("❌ Gemini API Error: Check API key, model name, or project access.")
-            st.exception(e)
             return {
                 "answer": "⚠️ Gemini API Error occurred.",
+                "error": str(e),
                 "source_chunks": context_chunks
             }
+
