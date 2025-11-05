@@ -1,3 +1,4 @@
+
 import google.generativeai as genai
 import os
 
@@ -5,8 +6,9 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 class LLMResponseAgent:
     def handle_message(self, message):
-        query = message["data"].get("query", "")
-        context_chunks = message["data"].get("chunks", [])
+        # ✅ Access top-level keys directly
+        query = message.get("query", "")
+        context_chunks = message.get("chunks", [])
 
         context = "\n\n".join(context_chunks)
         prompt = f"""You are an AI assistant using RAG.
@@ -21,7 +23,6 @@ User query:
 Answer clearly and concisely based on the given context."""
 
         try:
-            # ✅ Correct model name
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(prompt)
             answer = response.text
@@ -37,4 +38,3 @@ Answer clearly and concisely based on the given context."""
                 "error": str(e),
                 "source_chunks": context_chunks
             }
-
