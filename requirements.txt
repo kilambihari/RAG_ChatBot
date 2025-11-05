@@ -1,12 +1,12 @@
+
 streamlit
-faiss-cpu
-transformers
-torch
-python-docx
-python-pptx
-pypdf2
-pandas
-markdown
-google-generativeai==0.3.2
 sentence-transformers==2.2.2
+huggingface_hub==0.24.6
+numpy
+faiss-cpu
+PyMuPDF
+python-docx
+pandas
+google-generativeai
+protobuf<5
 
