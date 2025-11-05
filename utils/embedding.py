@@ -1,23 +1,36 @@
-import google.generativeai as genai
-import numpy as np
+from sentence_transformers import SentenceTransformer
 import streamlit as st
 
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# Load the model once
+@st.cache_resource
+def load_model():
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
 def get_gemini_embedding(chunks):
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    embeddings = []
+    """
+    Generates embeddings using Sentence Transformers (free & offline)
+    Compatible replacement for Gemini embeddings.
+    """
+    model = load_model()
+    try:
+        embeddings = model.encode(chunks, convert_to_numpy=True).tolist()
+        st.success(f"✅ Generated {len(embeddings)} embeddings successfully using SentenceTransformer.")
+        return embeddings
+    except Exception as e:
+        st.error(f"❌ Embedding generation failed: {e}")
+        return []
 
-    for i, text in enumerate(chunks):
-        try:
-            prompt = f"Convert the following text into a 768-dimensional numerical embedding vector:\n{text}"
-            response = model.generate_content(prompt)
-            # Dummy encoding: convert response to numeric hash
-            vec = np.random.rand(768).tolist()
-            embeddings.append(vec)
-            st.info(f"✅ Fake embedding generated for chunk {i}")
-        except Exception as e:
-            st.warning(f"Embedding failed: {e}")
-
-    return embeddings
+def query_gemini_llm(prompt):
+    """
+    Keep your Gemini or OpenAI LLM here for answering questions.
+    Only the embedding part is replaced.
+    """
+    import google.generativeai as genai
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        return f"Gemini API failed: {e}"
 
