@@ -1,5 +1,8 @@
 import google.generativeai as genai
 import streamlit as st
+import os
+print("🔑 Gemini API key detected:", bool(st.secrets["GEMINI_API_KEY"]))
+
 
 # Configure Gemini API
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
