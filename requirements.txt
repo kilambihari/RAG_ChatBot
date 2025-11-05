@@ -8,3 +8,5 @@ pypdf2
 pandas
 markdown
 google-generativeai==0.3.2
+sentence-transformers==2.2.2
+
