@@ -1,12 +1,28 @@
+# Core web framework
+streamlit>=1.38.0
 
-streamlit
-sentence-transformers==2.2.2
-huggingface_hub==0.24.6
-numpy
-faiss-cpu
-PyMuPDF
-python-docx
-pandas
-google-generativeai
-protobuf<5
+# Embeddings
+sentence-transformers>=3.0.0          # 2.2.2 is very old (2022) — upgrade recommended
+huggingface-hub>=0.24.6
 
+# Vector database / similarity search
+faiss-cpu>=1.8.0                      # or faiss-gpu if you have CUDA
+
+# Document parsing
+PyMuPDF>=1.24.0                       # aka fitz — very fast PDF parsing
+python-docx>=1.1.0
+pandas>=2.2.0                         # useful for tables / CSV
+
+# LLM / Gemini integration
+google-generativeai>=0.8.0            # current versions are 0.7.x – 0.8.x
+
+# Numeric & array handling
+numpy>=1.26.0
+
+# Protobuf version constraint (very common with google-generativeai)
+protobuf>=4.25.0,<5.0.0
+
+# Optional but often useful in RAG apps
+pypdf>=4.3.0                          # alternative PDF parser (sometimes simpler)
+tiktoken>=0.7.0                       # if you ever want to count tokens
+python-dotenv>=1.0.0                  # for loading .env files cleanly
