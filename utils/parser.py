@@ -1,60 +1,127 @@
 import os
-import fitz
+import fitz             # PyMuPDF
 import pandas as pd
-import docx
-import pptx
-import markdown
+from docx import Document
+from pptx import Presentation
+import markdown         # only if you really want to convert md → html later
 
-def parse_pdf(file_path):
-    with open(file_path, "rb") as f:
-        reader = PyPDF2.PdfReader(f)
-        text = "\n".join(page.extract_text() for page in reader.pages)
-    return [text[i:i+1000] for i in range(0, len(text), 1000)]
+def parse_pdf(file_path: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
+    """Extract text from PDF using PyMuPDF (fitz) - much faster & more reliable than PyPDF2"""
+    try:
+        doc = fitz.open(file_path)
+        full_text = ""
+        for page in doc:
+            text = page.get_text("text").strip()
+            if text:
+                full_text += text + "\n\n"
+        doc.close()
 
-def parse_docx(file_path):
-    doc = docx.Document(file_path)
-    return [p.text for p in doc.paragraphs if p.text.strip()]
+        if not full_text.strip():
+            return []
 
-def parse_txt(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read().splitlines()
+        # Simple overlapping chunking
+        chunks = []
+        start = 0
+        while start < len(full_text):
+            end = start + chunk_size
+            chunks.append(full_text[start:end])
+            start = end - chunk_overlap
+        return chunks
 
-def parse_csv(file_path):
-    df = pd.read_csv(file_path)
-    return [row for row in df.astype(str).apply(lambda x: " | ".join(x), axis=1)]
+    except Exception as e:
+        raise ValueError(f"Failed to parse PDF {file_path}: {str(e)}")
 
-def parse_pptx(file_path):
-    prs = pptx.Presentation(file_path)
-    text_runs = []
-    for slide in prs.slides:
-        slide_text = []
-        for shape in slide.shapes:
-            if hasattr(shape, "text"):
-                text = shape.text.strip()
-                if text:
-                    slide_text.append(text)
-        if slide_text:
-            text_runs.append(" ".join(slide_text))
-    return text_runs
 
-def parse_md(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read().splitlines()
+def parse_docx(file_path: str) -> list[str]:
+    """Extract paragraphs from .docx"""
+    try:
+        doc = Document(file_path)
+        paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        # You could also extract tables here if needed
+        return paragraphs
+    except Exception as e:
+        raise ValueError(f"Failed to parse DOCX {file_path}: {str(e)}")
 
-def parse_document(file_path):
+
+def parse_txt_or_md(file_path: str, is_markdown: bool = False) -> list[str]:
+    """Handle .txt and .md files uniformly"""
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+
+        if is_markdown:
+            # Optional: convert markdown to plain text if you want
+            # html = markdown.markdown(content)
+            # plain = ... (use html2text or just keep raw)
+            pass
+
+        # Split into non-empty lines or paragraphs
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        return lines
+
+    except Exception as e:
+        raise ValueError(f"Failed to parse text/markdown file {file_path}: {str(e)}")
+
+
+def parse_csv(file_path: str) -> list[str]:
+    """Convert CSV rows to readable strings"""
+    try:
+        df = pd.read_csv(file_path, dtype=str, keep_default_na=False)
+        # Join columns with | separator
+        rows = [" | ".join(row.astype(str).tolist()) for _, row in df.iterrows()]
+        return [row for row in rows if row.strip()]
+    except Exception as e:
+        raise ValueError(f"Failed to parse CSV {file_path}: {str(e)}")
+
+
+def parse_pptx(file_path: str) -> list[str]:
+    """Extract text from PowerPoint slides"""
+    try:
+        prs = Presentation(file_path)
+        slide_texts = []
+
+        for slide in prs.slides:
+            slide_content = []
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    slide_content.append(shape.text.strip())
+            if slide_content:
+                slide_texts.append(" ".join(slide_content))
+
+        return slide_texts
+
+    except Exception as e:
+        raise ValueError(f"Failed to parse PPTX {file_path}: {str(e)}")
+
+
+def parse_document(file_path: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
+    """
+    Main entry point - returns list of text chunks/paragraphs depending on file type
+    """
     ext = os.path.splitext(file_path)[1].lower()
-    if ext == ".pdf":
-        return parse_pdf(file_path)
-    elif ext == ".docx":
-        return parse_docx(file_path)
-    elif ext == ".txt":
-        return parse_txt(file_path)
-    elif ext == ".csv":
-        return parse_csv(file_path)
-    elif ext == ".pptx":
-        return parse_pptx(file_path)
-    elif ext == ".md":
-        return parse_md(file_path)
-    else:
-        raise ValueError("Unsupported file format")
+
+    parsers = {
+        ".pdf":  lambda: parse_pdf(file_path, chunk_size, chunk_overlap),
+        ".docx": lambda: parse_docx(file_path),
+        ".txt":  lambda: parse_txt_or_md(file_path, is_markdown=False),
+        ".md":   lambda: parse_txt_or_md(file_path, is_markdown=True),
+        ".csv":  lambda: parse_csv(file_path),
+        ".pptx": lambda: parse_pptx(file_path),
+    }
+
+    if ext not in parsers:
+        raise ValueError(f"Unsupported file extension: {ext}")
+
+    return parsers[ext]()
+
+
+# Optional: small test helper (can be removed later)
+if __name__ == "__main__":
+    # Example usage
+    try:
+        chunks = parse_document("example.pdf")
+        print(f"Extracted {len(chunks)} chunks")
+        print(chunks[0][:200] if chunks else "No content")
+    except Exception as e:
+        print(e)
 
