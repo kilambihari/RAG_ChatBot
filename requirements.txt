@@ -11,4 +11,5 @@ protobuf<5
 torch
 google-generativeai>=0.7.1
 python-pptx
-# PyPDF2                 # ← comment out or remove this line
+Markdown
+# PyPDF2                 
