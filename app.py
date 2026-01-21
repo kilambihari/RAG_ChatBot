@@ -5,58 +5,181 @@ from agents.retrieval_agent import RetrievalAgent
 from agents.llm_response_agent import LLMResponseAgent
 from utils.mcp import create_message, generate_trace_id
 
-# Create necessary folders
+# ────────────────────────────────────────────────
+#  Folders
+# ────────────────────────────────────────────────
 os.makedirs("data", exist_ok=True)
 os.makedirs("data/vector_store", exist_ok=True)
 
-# Streamlit page config
-st.set_page_config(page_title="Agentic RAG with MCP", layout="wide")
+# ────────────────────────────────────────────────
+#  Page config
+# ────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Agentic RAG with MCP",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 st.title("Agentic RAG Chatbot (with MCP)")
 
-# File uploader
-uploaded = st.file_uploader("Upload a document", type=["pdf", "docx", "txt", "md", "csv", "pptx"])
-doc_id = None
+# ────────────────────────────────────────────────
+#  Initialize session state
+# ────────────────────────────────────────────────
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-if uploaded:
-    path = os.path.join("data", uploaded.name)
-    with open(path, "wb") as f:
-        f.write(uploaded.read())
-    st.success(f"Uploaded {uploaded.name}")
+if "doc_id" not in st.session_state:
+    st.session_state.doc_id = None
 
-    # Instantiate agents
-    ingestor = IngestionAgent()
-    retriever = RetrievalAgent()
-    responder = LLMResponseAgent()
+if "trace" not in st.session_state:
+    st.session_state.trace = None
 
-    # Process document on button click
-    if st.button("Process Document"):
-        trace = generate_trace_id()
-        msg_ingest = create_message("User", "IngestionAgent", "INGEST_REQUEST", trace, {"file_path": path})
-        ingest_resp = ingestor.handle_message(msg_ingest)
-        doc_id = ingest_resp.get("doc_id")
-        st.session_state["trace"] = trace
-        st.session_state["doc_id"] = doc_id
-        st.success("Document parsed and indexed.")
+if "last_uploaded_filename" not in st.session_state:
+    st.session_state.last_uploaded_filename = None
 
-# QUESTION input (always visible *after upload*)
-if uploaded and "doc_id" in st.session_state:
-    user_q = st.text_input("Enter your question:")
-    if st.button("Get Answer") and user_q:
-        trace = st.session_state["trace"]
-        doc_id = st.session_state["doc_id"]
+if "ingestion_done" not in st.session_state:
+    st.session_state.ingestion_done = False
 
-        msg_retrieve = create_message("User", "RetrievalAgent", "RETRIEVE_REQUEST", trace, {
-            "query": user_q,
-            "doc_id": doc_id
-        })
-        retrieve_resp = retriever.handle_message(msg_retrieve)
+# ────────────────────────────────────────────────
+#  Sidebar – Document status
+# ────────────────────────────────────────────────
+with st.sidebar:
+    st.header("Document Status")
+    if st.session_state.doc_id:
+        st.success(f"Active document ID: {st.session_state.doc_id[:8]}…")
+        if st.button("Clear current document", use_container_width=True):
+            st.session_state.doc_id = None
+            st.session_state.trace = None
+            st.session_state.ingestion_done = False
+            st.session_state.messages = []
+            st.rerun()
+    else:
+        st.info("No document processed yet")
 
-        msg_llm = create_message("RetrievalAgent", "LLMResponseAgent", "CONTEXT_RESPONSE", trace, retrieve_resp)
-        llm_resp = responder.handle_message(msg_llm)
+# ────────────────────────────────────────────────
+#  File uploader
+# ────────────────────────────────────────────────
+uploaded_file = st.file_uploader(
+    "Upload document",
+    type=["pdf", "docx", "txt", "md", "csv", "pptx"],
+    help="Supported formats: PDF, Word, Text, Markdown, CSV, PowerPoint"
+)
 
-        st.markdown("### 🤖 Answer")
-        st.write(llm_resp["answer"])
+if uploaded_file is not None:
+    # ── Save file ─────────────────────────────────
+    save_path = os.path.join("data", uploaded_file.name)
 
-        st.markdown("### 📚 Source Context")
-        for c in llm_resp["source_chunks"]:
-            st.code(c)
+    # Only re-save if filename changed (avoid unnecessary writes)
+    if st.session_state.last_uploaded_filename != uploaded_file.name:
+        with open(save_path, "wb") as f:
+            f.write(uploaded_file.getvalue())
+        st.session_state.last_uploaded_filename = uploaded_file.name
+        st.success(f"Saved: **{uploaded_file.name}** ({uploaded_file.size / 1024:.1f} KB)")
+    else:
+        st.info(f"Using already saved file: **{uploaded_file.name}**")
+
+    # ── Process button ─────────────────────────────
+    if not st.session_state.ingestion_done or st.session_state.last_uploaded_filename != uploaded_file.name:
+        if st.button("📄 Process & Index Document", type="primary", use_container_width=True):
+            with st.spinner("Ingesting document... (may take a while for large files)"):
+                try:
+                    ingestor = IngestionAgent()
+                    trace = generate_trace_id()
+
+                    msg = create_message(
+                        sender="User",
+                        recipient="IngestionAgent",
+                        msg_type="INGEST_REQUEST",
+                        trace_id=trace,
+                        payload={"file_path": save_path}
+                    )
+
+                    response = ingestor.handle_message(msg)
+
+                    if "doc_id" in response and response["doc_id"]:
+                        st.session_state.doc_id = response["doc_id"]
+                        st.session_state.trace = trace
+                        st.session_state.ingestion_done = True
+                        st.session_state.last_uploaded_filename = uploaded_file.name
+                        st.success(f"Document indexed successfully\n**doc_id:** {response['doc_id']}")
+                    else:
+                        st.error("Ingestion did not return a valid doc_id")
+
+                except Exception as e:
+                    st.error(f"Ingestion failed\n{str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc(), language="python")
+
+# ────────────────────────────────────────────────
+#  Chat interface – only shown when we have a doc
+# ────────────────────────────────────────────────
+if st.session_state.doc_id:
+
+    # Show chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat input
+    if prompt := st.chat_input("Ask a question about the document…"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Searching document → Generating answer…"):
+                try:
+                    retriever = RetrievalAgent()
+                    responder = LLMResponseAgent()
+
+                    # 1. Retrieve
+                    retrieve_msg = create_message(
+                        sender="User",
+                        recipient="RetrievalAgent",
+                        msg_type="RETRIEVE_REQUEST",
+                        trace_id=st.session_state.trace,
+                        payload={
+                            "query": prompt,
+                            "doc_id": st.session_state.doc_id
+                        }
+                    )
+
+                    retrieve_result = retriever.handle_message(retrieve_msg)
+
+                    # 2. Generate answer
+                    llm_msg = create_message(
+                        sender="RetrievalAgent",
+                        recipient="LLMResponseAgent",
+                        msg_type="CONTEXT_RESPONSE",
+                        trace_id=st.session_state.trace,
+                        payload=retrieve_result
+                    )
+
+                    final_result = responder.handle_message(llm_msg)
+
+                    answer = final_result.get("answer", "No answer generated.")
+                    sources = final_result.get("source_chunks", [])
+
+                    st.markdown(answer)
+
+                    if sources:
+                        with st.expander("📚 Source chunks", expanded=False):
+                            for i, chunk in enumerate(sources, 1):
+                                st.markdown(f"**Chunk {i}**")
+                                st.code(chunk.strip(), language=None)
+
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": answer
+                    })
+
+                except Exception as e:
+                    st.error(f"Error during retrieval / generation\n{str(e)}")
+                    st.exception(e)
+
+else:
+    # No document yet → helper message
+    if st.session_state.last_uploaded_filename:
+        st.info("Please click **Process & Index Document** to make the file searchable.")
+    else:
+        st.info("Upload a document to start asking questions about it.")
