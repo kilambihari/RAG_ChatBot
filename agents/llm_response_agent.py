@@ -19,7 +19,7 @@ class LLMResponseAgent:
         top_p: float = 0.95,
         top_k: int = 40,
     ):
-        api_key = st.secrets("GOOGLE_API_KEY")
+        api_key = st.secrets["GOOGLE_API_KEY"]
         if not api_key:
             raise ValueError("GOOGLE_API_KEY environment variable is not set")
 
