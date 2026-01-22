@@ -88,7 +88,6 @@ if uploaded_file is not None:
 
                     msg = create_message(
                         sender="User",
-                        recipient="IngestionAgent",
                         msg_type="INGEST_REQUEST",
                         trace_id=trace,
                         payload={"file_path": save_path}
@@ -135,7 +134,6 @@ if st.session_state.doc_id:
                     # 1. Retrieve
                     retrieve_msg = create_message(
                         sender="User",
-                        recipient="RetrievalAgent",
                         msg_type="RETRIEVE_REQUEST",
                         trace_id=st.session_state.trace,
                         payload={
@@ -149,7 +147,6 @@ if st.session_state.doc_id:
                     # 2. Generate answer
                     llm_msg = create_message(
                         sender="RetrievalAgent",
-                        recipient="LLMResponseAgent",
                         msg_type="CONTEXT_RESPONSE",
                         trace_id=st.session_state.trace,
                         payload=retrieve_result
