@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
 from utils.parser import parse_document
-from utils.embedding import get_gemini_embedding
+from utils.embedding import get_embeddings
 from utils.vector_store import save_embeddings
 # from utils.mcp import create_message   ← usually not needed inside the agent
 
