@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from utils.parser import parse_document
 from utils.embedding import get_embeddings
 from utils.vector_store import save_embeddings
-# from utils.mcp import create_message   ← usually not needed inside the agent
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ class IngestionAgent:
     """
     Handles document ingestion:
       - Parses file into text chunks
-      - Creates embeddings using Gemini
+      - Creates embeddings using Sentence Transformers (all-MiniLM-L6-v2)
       - Stores chunks + embeddings + metadata in vector store
     """
 
@@ -23,13 +22,9 @@ class IngestionAgent:
         self,
         default_chunk_size: int = 1000,
         default_chunk_overlap: int = 180,
-        embedding_model: str = "models/embedding-001",  # common Gemini embedding model
     ):
         self.chunk_size = default_chunk_size
         self.chunk_overlap = default_chunk_overlap
-        self.embedding_model = embedding_model
-
-        # You can later make these configurable via environment variables or constructor args
 
     def handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -78,7 +73,6 @@ class IngestionAgent:
                 file_path,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
-                # add more kwargs if your parse_document supports them
             )
 
             if not chunks:
@@ -86,10 +80,11 @@ class IngestionAgent:
 
             logger.info(f"Extracted {len(chunks)} chunks")
 
-            # 2. Generate embeddings
-            embeddings: List[List[float]] = get_gemini_embedding(
-                chunks,
-                model=self.embedding_model
+            # 2. Generate embeddings using Sentence Transformers
+            embeddings: List[List[float]] = get_embeddings(
+                chunks=chunks,
+                batch_size=32,           # adjust based on your memory
+                show_progress=True
             )
 
             if len(embeddings) != len(chunks):
@@ -100,22 +95,23 @@ class IngestionAgent:
             # 3. Create unique document identifier
             doc_id = str(uuid.uuid4())
 
-            # 4. Prepare per-chunk metadata (very valuable for retrieval & traceability)
+            # 4. Prepare per-chunk metadata
             base_metadata = {
                 "file_name": os.path.basename(file_path),
                 "file_path": file_path,
                 "ingested_at": datetime.now(timezone.utc).isoformat(),
                 "source": "ingestion_agent",
-                **extra_metadata  # user can pass e.g. {"department": "legal", "year": 2025}
+                "embedding_model": "all-MiniLM-L6-v2",
+                **extra_metadata
             }
 
             chunk_metadata_list = []
-            for i in range(len(chunks)):
+            for i, chunk in enumerate(chunks):
                 chunk_meta = base_metadata.copy()
                 chunk_meta.update({
                     "chunk_index": i,
-                    "chunk_length": len(chunks[i]),
-                    # Add page numbers, section titles, etc. if your parser supports it
+                    "chunk_length": len(chunk),
+                    # "page_number": ...    # ← add if your parser supports it
                 })
                 chunk_metadata_list.append(chunk_meta)
 
@@ -124,7 +120,7 @@ class IngestionAgent:
                 doc_id=doc_id,
                 chunks=chunks,
                 embeddings=embeddings,
-                metadatas=chunk_metadata_list,   # ← most vector stores support this
+                metadatas=chunk_metadata_list,
             )
 
             logger.info(f"Ingestion completed | doc_id={doc_id} | chunks={len(chunks)}")
@@ -145,15 +141,38 @@ class IngestionAgent:
         return {
             "status": "error",
             "doc_id": doc_id,
+            "chunk_count": None,
             "message": None,
             "error": msg
         }
 
 
-# Quick helper (optional) – call once at app startup
-def configure_logging(level=logging.INFO):
+# Optional: helper to configure logging once at app startup
+def configure_logging(level: int = logging.INFO):
     logging.basicConfig(
         level=level,
         format="%(asctime)s  %(name)-18s  %(levelname)-8s  %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
+
+
+# ────────────────────────────────────────────────
+#  If you want to test the agent standalone
+# ────────────────────────────────────────────────
+if __name__ == "__main__":
+    configure_logging()
+
+    # Example usage
+    agent = IngestionAgent()
+
+    test_message = {
+        "payload": {
+            "file_path": "data/example.pdf",  # ← change to real test file
+            "chunk_size": 800,
+            "chunk_overlap": 150,
+            "metadata": {"category": "test", "year": 2026}
+        }
+    }
+
+    result = agent.handle_message(test_message)
+    print(result)
